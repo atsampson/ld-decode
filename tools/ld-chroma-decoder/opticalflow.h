@@ -42,17 +42,13 @@ class OpticalFlow
 public:
     OpticalFlow();
 
-    // Input frame buffer definitions
-    struct yiqLine_t {
-        YIQ pixel[911]; // One line of YIQ data
-    };
-
     void denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues);
 
 private:
     // Globals used by the opticalFlow3D method
-    cv::Mat previousFrameGrey;
-    qint32 framesProcessed;
+    cv::Mat previousFieldGrey;
+    cv::Mat previousPreviousFieldGrey;
+    qint32 fieldsProcessed;
 
     cv::Mat convertYtoMat(const YiqBuffer &yiqBuffer);
     inline qreal calculateDistance(qreal yDifference, qreal xDifference);

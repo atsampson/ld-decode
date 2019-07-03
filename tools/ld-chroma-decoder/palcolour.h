@@ -40,11 +40,11 @@ public:
     void updateConfiguration(LdDecodeMetaData::VideoParameters videoParametersParam);
 
     // Method to perform the colour decoding
-    QByteArray performDecode(QByteArray topFieldData, QByteArray bottomFieldData, qint32 brightness, qint32 saturation, bool blackAndWhite);
+    QByteArray performDecode(QByteArray fieldData, qint32 brightness, qint32 saturation, bool blackAndWhite);
 
     // Replacements for #DEFINE values
     static const int MAX_WIDTH = 1135; // Simon: Maximum based on PAL width
-    static const int MAX_HEIGHT = 625; // Simon: Maximum based on PAL height
+    static const int MAX_HEIGHT = 313; // Simon: Maximum based on PAL height
 
 private:
     // Configuration parameters
@@ -61,7 +61,7 @@ private:
     double ydiv;
     double refAmpl;
     double normalise;
-    QByteArray outputFrame;
+    QByteArray outputField;
 
     bool configurationSet;
 

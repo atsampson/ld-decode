@@ -27,23 +27,24 @@
 
 OpticalFlow::OpticalFlow()
 {
-    framesProcessed = 0;
+    fieldsProcessed = 0;
 }
 
 // Perform a dense optical flow analysis
-// Input is a vector of 16-bit Y values for the NTSC frame (910x525)
+// Input is a vector of 16-bit Y values for the NTSC field (910x263)
 void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues)
 {
     // Convert the buffer of Y values into an OpenCV n-dimensional dense array (cv::Mat)
-    cv::Mat currentFrameGrey = convertYtoMat(yiqBuffer);
+    cv::Mat currentFieldGrey = convertYtoMat(yiqBuffer);
     cv::Mat flow;
 
-    kValues.resize(910 * 525);
+    kValues.resize(910 * 263);
 
+    // We need to compare with the last-but-one field.
     // If we have no previous image, simply copy the current to previous (and set all K values to 1 for 2D)
-    if (framesProcessed > 0) {
+    if (fieldsProcessed >= 2) {
         // Perform the OpenCV compute dense optical flow (Gunnar Farneback’s algorithm)
-        cv::calcOpticalFlowFarneback(previousFrameGrey, currentFrameGrey, flow, 0.5, 4, 2, 3, 7, 1.5, 0);
+        cv::calcOpticalFlowFarneback(previousPreviousFieldGrey, currentFieldGrey, flow, 0.5, 4, 2, 3, 7, 1.5, 0);
 
         // Apply a wide blur to the flow map to prevent the 3D filter from acting on small spots of the image;
         // also helps a lot with sharp scene transitions and still-frame images due to the averaging effect
@@ -51,42 +52,43 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
         cv::GaussianBlur(flow, flow, cv::Size(21, 21), 0);
 
         // Convert to K values
-        for (qint32 y = 0; y < 524; y++) {
+        for (qint32 y = 0; y < 263; y++) {
             for (qint32 x = 0; x < 910; x++) {
                 // Get the flow velocity at the current x, y point
                 const cv::Point2f flowatxy = flow.at<cv::Point2f>(y, x);
 
                 // Calculate the difference between x and y to get the relative velocity (in any direction)
-                // We multiply the x velocity by 2 in order to make the motion detection twice as sensitive
-                // in the X direction than the y
-                qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x) * 2);
+                // Because we're working with a single field, the motion detection is inherently twice as
+                // sensitive in the X direction than the Y
+                qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x));
 
                 kValues[(910 * y) + x] = clamp(velocity, 0.0, 1.0);
             }
         }
     } else kValues.fill(1);
 
-    // Copy the current frame to the previous frame
-    currentFrameGrey.copyTo(previousFrameGrey);
+    // Copy the current field to the previous field
+    previousFieldGrey.copyTo(previousPreviousFieldGrey);
+    currentFieldGrey.copyTo(previousFieldGrey);
 
-    framesProcessed++;
+    fieldsProcessed++;
 }
 
-// Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
+// Method to convert a qreal vector field of Y values to an OpenCV n-dimensional dense array (cv::Mat)
 cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
 {
-    quint16 frame[910 * 525];
-    memset(frame, 0, sizeof(frame));
+    quint16 field[910 * 263];
+    memset(field, 0, sizeof(field));
 
     // Firstly we have to convert the Y vector of real numbers into quint16 values for OpenCV
-    for (qint32 line = 0; line < 525; line++) {
+    for (qint32 line = 0; line < 263; line++) {
         for (qint32 pixel = 0; pixel < 910; pixel++) {
-            frame[(line * 910) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
+            field[(line * 910) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
         }
     }
 
     // Return a Mat y * x in CV_16UC1 format
-    return cv::Mat(525, 910, CV_16UC1, frame);
+    return cv::Mat(263, 910, CV_16UC1, field).clone();
 }
 
 // This method calculates the distance between points where x is the difference between the x-coordinates

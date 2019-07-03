@@ -62,7 +62,7 @@ bool NtscDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParame
     config.combConfig.activeVideoEnd = videoParameters.activeVideoEnd;
 
     // Set the first frame scan line which contains active video
-    config.combConfig.firstVisibleFrameLine = config.firstActiveScanLine;
+    config.combConfig.firstVisibleFieldLine = config.firstActiveScanLine / 2;
 
     // Set the IRE levels
     config.combConfig.blackIre = videoParameters.black16bIre;
@@ -108,11 +108,11 @@ void NtscThread::run()
         }
 
         // Filter the frame
-        QByteArray outputData = comb.process(firstFieldData, secondFieldData, burstMedianIre,
-                                             firstFieldPhaseID, secondFieldPhaseID);
+        QByteArray firstFieldDecoded = comb.process(firstFieldData, burstMedianIre, firstFieldPhaseID);
+        QByteArray secondFieldDecoded = comb.process(secondFieldData, burstMedianIre, secondFieldPhaseID);
 
         // The NTSC filter outputs the whole frame, so here we crop it to the required dimensions
-        QByteArray croppedData = NtscDecoder::cropOutputFrame(config, outputData);
+        QByteArray croppedData = NtscDecoder::cropOutputFrame(config, firstFieldDecoded, secondFieldDecoded);
 
         // Write the result to the output file
         if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {

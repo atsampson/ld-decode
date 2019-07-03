@@ -40,6 +40,7 @@ bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParamet
     }
 
     // Compute cropping parameters
+    // XXX This cuts off the bottom half-line
     setVideoParameters(config, videoParameters, 44, 620);
 
     return true;
@@ -81,17 +82,17 @@ void PalThread::run()
         // Calculate the saturation level from the burst median IRE
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        qreal tSaturation = 125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre));
+        qint32 saturation = static_cast<qint32>(125.0 + ((100.0 / 20.0) * (20.0 - burstMedianIre)));
 
         // Perform the PALcolour filtering
-        QByteArray outputData = palColour.performDecode(firstFieldData, secondFieldData, 100,
-                                                        static_cast<qint32>(tSaturation), config.blackAndWhite);
+        QByteArray firstFieldDecoded = palColour.performDecode(firstFieldData, 100, saturation, config.blackAndWhite);
+        QByteArray secondFieldDecoded = palColour.performDecode(secondFieldData, 100, saturation, config.blackAndWhite);
 
         // The PALcolour library outputs the whole frame, so here we have to strip all the non-visible stuff to just get the
         // actual required image - it would be better if PALcolour gave back only the required RGB, but it's not my library.
         // Since PALcolour uses +-3 scan-lines to colourise, the final lines before the non-visible area may not come out quite
         // right, but we're including them here anyway.
-        QByteArray croppedData = PalDecoder::cropOutputFrame(config, outputData);
+        QByteArray croppedData = PalDecoder::cropOutputFrame(config, firstFieldDecoded, secondFieldDecoded);
 
         // Write the result to the output file
         if (!decoderPool.putOutputFrame(frameNumber, croppedData)) {

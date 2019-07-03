@@ -72,7 +72,8 @@ void Decoder::setVideoParameters(Decoder::Configuration &config, const LdDecodeM
                "will be colourised and trimmed to" << outputWidth << "x" << outputHeight << "RGB 16-16-16 frames";
 }
 
-QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData) {
+QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config,
+                                    QByteArray evenFieldData, QByteArray oddFieldData) {
     const qint32 activeVideoStart = config.videoParameters.activeVideoStart;
     const qint32 activeVideoEnd = config.videoParameters.activeVideoEnd;
     const qint32 outputLineBytes = (activeVideoEnd - activeVideoStart) * 6;
@@ -86,8 +87,13 @@ QByteArray Decoder::cropOutputFrame(const Decoder::Configuration &config, QByteA
 
     // Copy the active region from the decoded image
     for (qint32 y = config.firstActiveScanLine; y < config.lastActiveScanLine; y++) {
-        croppedData.append(outputData.mid((y * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6),
-                                          outputLineBytes));
+        const qint32 fieldLine = y / 2;
+        const qint32 offset = (fieldLine * config.videoParameters.fieldWidth * 6) + (activeVideoStart * 6);
+        if ((y % 2) == 0) {
+            croppedData.append(evenFieldData.mid(offset, outputLineBytes));
+        } else {
+            croppedData.append(oddFieldData.mid(offset, outputLineBytes));
+        }
     }
 
     // Insert padding at the bottom

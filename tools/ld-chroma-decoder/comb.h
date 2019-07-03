@@ -62,7 +62,7 @@ public:
         qint32 activeVideoStart;
         qint32 activeVideoEnd;
 
-        qint32 firstVisibleFrameLine;
+        qint32 firstVisibleFieldLine;
 
         qint32 blackIre;
         qint32 whiteIre;
@@ -73,7 +73,7 @@ public:
 
     Configuration getConfiguration();
     void setConfiguration(const Configuration &configurationParam);
-    QByteArray process(QByteArray topFieldInputBuffer, QByteArray bottomFieldInputBuffer, qreal burstMedianIre, qint32 topFieldPhaseID, qint32 bottomFieldPhaseID);
+    QByteArray process(QByteArray fieldInputBuffer, qreal burstMedianIre, qint32 fieldPhaseID);
 
 protected:
 
@@ -84,54 +84,50 @@ private:
     // IRE scaling
     qreal irescale;
 
-    // Calculated frame height
-    qint32 frameHeight;
+    // Input field height
+    qint32 fieldHeight;
 
-    // Input frame buffer definitions
+    // Input field buffer definitions
     struct PixelLine {
-        qreal pixel[526][911]; // 526 is the maximum allowed field lines, 911 is the maximum field width
+        qreal pixel[263][910]; // 263 is the maximum allowed field lines, 910 is the maximum field width
     };
 
-    struct FrameBuffer {
+    struct FieldBuffer {
         QByteArray rawbuffer;
 
         QVector<PixelLine> clpbuffer; // Unfiltered chroma for the current phase (can be I or Q)
         QVector<qreal> kValues;
-        YiqBuffer yiqBuffer; // YIQ values for the frame
+        YiqBuffer yiqBuffer; // YIQ values for the field
 
-        qreal burstLevel; // The median colour burst amplitude for the frame
-        qint32 firstFieldPhaseID; // The phase of the frame's first field
-        qint32 secondFieldPhaseID; // The phase of the frame's second field
+        qreal burstLevel; // The median colour burst amplitude for the field
+        qint32 fieldPhaseID; // The phase of the field
     };
-
-    // Input and output file handles
-    QFile *inputFileHandle;
-    QFile *outputFileHandle;
 
     // Optical flow processor
     OpticalFlow opticalFlow;
 
-    // Previous and next frame for 3D processing
-    FrameBuffer previousFrameBuffer;
+    // Previous two fields for 3D processing
+    FieldBuffer previousFieldBuffer;
+    FieldBuffer previousPreviousFieldBuffer;
 
     void postConfigurationTasks();
 
-    inline qint32 GetFieldID(FrameBuffer *frameBuffer, qint32 lineNumber);
-    inline bool GetLinePhase(FrameBuffer *frameBuffer, qint32 lineNumber);
+    inline qint32 GetFieldID(FieldBuffer *fieldBuffer, qint32 lineNumber);
+    inline bool GetLinePhase(FieldBuffer *fieldBuffer, qint32 lineNumber);
 
-    void split1D(FrameBuffer *frameBuffer);
-    void split2D(FrameBuffer *frameBuffer);
-    void split3D(FrameBuffer *currentFrame, FrameBuffer *previousFrame);
+    void split1D(FieldBuffer *fieldBuffer);
+    void split2D(FieldBuffer *fieldBuffer);
+    void split3D(FieldBuffer *currentField, FieldBuffer *previousField);
 
     void filterIQ(YiqBuffer &yiqBuffer);
-    void splitIQ(FrameBuffer *frameBuffer);
+    void splitIQ(FieldBuffer *fieldBuffer);
 
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
-    QByteArray yiqToRgbFrame(const YiqBuffer &yiqBuffer, qreal burstLevel);
-    void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, QByteArray &rgbOutputFrame);
-    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
+    QByteArray yiqToRgbField(const YiqBuffer &yiqBuffer, qreal burstLevel);
+    void overlayOpticalFlowMap(const FieldBuffer &fieldBuffer, QByteArray &rgbOutputField);
+    void adjustY(FieldBuffer *fieldBuffer, YiqBuffer &yiqBuffer);
 };
 
 #endif // COMB_H

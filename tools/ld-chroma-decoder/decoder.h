@@ -80,7 +80,7 @@ public:
                                    qint32 firstActiveScanLine, qint32 lastActiveScanLine);
 
     // Crop a full decoded frame to the output frame size
-    static QByteArray cropOutputFrame(const Decoder::Configuration &config, QByteArray outputData);
+    static QByteArray cropOutputFrame(const Decoder::Configuration &config, QByteArray evenFieldData, QByteArray oddFieldData);
 };
 
 #endif
