@@ -31,14 +31,17 @@ OpticalFlow::OpticalFlow()
 }
 
 // Perform a dense optical flow analysis
-// Input is a vector of 16-bit Y values for the NTSC frame (910x525)
+// Input is a vector of 16-bit Y values for the NTSC frame
 void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &kValues)
 {
+    const qint32 width = yiqBuffer[0].size();
+    const qint32 height = yiqBuffer.size();
+
     // Convert the buffer of Y values into an OpenCV n-dimensional dense array (cv::Mat)
     cv::Mat currentFrameGrey = convertYtoMat(yiqBuffer);
     cv::Mat flow;
 
-    kValues.resize(910 * 525);
+    kValues.resize(width * height);
 
     // If we have no previous image, simply copy the current to previous (and set all K values to 1 for 2D)
     if (framesProcessed > 0) {
@@ -51,8 +54,8 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
         cv::GaussianBlur(flow, flow, cv::Size(21, 21), 0);
 
         // Convert to K values
-        for (qint32 y = 0; y < 524; y++) {
-            for (qint32 x = 0; x < 910; x++) {
+        for (qint32 y = 0; y < height; y++) {
+            for (qint32 x = 0; x < width; x++) {
                 // Get the flow velocity at the current x, y point
                 const cv::Point2f flowatxy = flow.at<cv::Point2f>(y, x);
 
@@ -61,7 +64,7 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
                 // in the X direction than the y
                 qreal velocity = calculateDistance(static_cast<qreal>(flowatxy.y), static_cast<qreal>(flowatxy.x) * 2);
 
-                kValues[(910 * y) + x] = clamp(velocity, 0.0, 1.0);
+                kValues[(y * width) + x] = clamp(velocity, 0.0, 1.0);
             }
         }
     } else kValues.fill(1);
@@ -75,18 +78,21 @@ void OpticalFlow::denseOpticalFlow(const YiqBuffer &yiqBuffer, QVector<qreal> &k
 // Method to convert a qreal vector frame of Y values to an OpenCV n-dimensional dense array (cv::Mat)
 cv::Mat OpticalFlow::convertYtoMat(const YiqBuffer &yiqBuffer)
 {
-    quint16 frame[910 * 525];
-    memset(frame, 0, sizeof(frame));
+    const qint32 width = yiqBuffer[0].size();
+    const qint32 height = yiqBuffer.size();
 
-    // Firstly we have to convert the Y vector of real numbers into quint16 values for OpenCV
-    for (qint32 line = 0; line < 525; line++) {
-        for (qint32 pixel = 0; pixel < 910; pixel++) {
-            frame[(line * 910) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
+    // XXX VLA is C++14
+    quint16 frame[width * height];
+
+    // Firstly we have to convert the Y vector of real numbers into quint8 values for OpenCV
+    for (qint32 line = 0; line < height; line++) {
+        for (qint32 pixel = 0; pixel < width; pixel++) {
+            frame[(line * width) + pixel] = static_cast<quint16>(yiqBuffer[line][pixel].y);
         }
     }
 
     // Return a Mat y * x in CV_16UC1 format
-    return cv::Mat(525, 910, CV_16UC1, frame).clone();
+    return cv::Mat(height, width, CV_16UC1, frame).clone();
 }
 
 // This method calculates the distance between points where x is the difference between the x-coordinates
