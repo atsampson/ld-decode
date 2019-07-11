@@ -289,6 +289,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     py[i]=PY/ydiv; qy[i]=QY/ydiv;
                 }
 
+#if 0
                 // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
                 for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
                     qint32 tmp = static_cast<qint32>(b0[i]-(py[i]*sine[i]+qy[i]*cosine[i]) / normalise - videoParameters.black16bIre);
@@ -296,6 +297,15 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     if (tmp > 65535) tmp = 65535;
                     Y[i] = static_cast<quint16>(tmp);
                 }
+#else
+                // Complementary decoder -- subtract U+V to get Y
+                for (qint32 i=videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+                    qint32 tmp = static_cast<qint32>(b0[i]-(pu[i]*sine[i]+qu[i]*cosine[i]+pv[i]*sine[i]+qv[i]*cosine[i]) / normalise - videoParameters.black16bIre);
+                    if (tmp < 0) tmp = 0;
+                    if (tmp > 65535) tmp = 65535;
+                    Y[i] = static_cast<quint16>(tmp);
+                }
+#endif
 
                 // Define scan line pointer to output buffer using 16 bit unsigned words
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
