@@ -72,7 +72,7 @@ elif filename[-3:] == 'r16':
 elif filename[-2:] == 'r8':
     loader = load_unpacked_data_u8
 elif filename[-7:] == 'raw.oga':
-    loader = LoadFFmpeg()
+    loader = LoadFFmpeg(args.inputfreq)
 else:
     loader = load_packed_data_4_40
 

@@ -283,7 +283,13 @@ def load_packed_data_4_40(infile, sample, readlen):
 class LoadFFmpeg:
     """Load samples from a wide variety of formats using ffmpeg."""
 
-    def __init__(self):
+    def __init__(self, inputfreq):
+        """Constructor.
+
+        :param inputfreq: Sample rate of the input file in MHz."""
+
+        self.freq = inputfreq * 1.0e6
+
         # ffmpeg subprocess
         self.ffmpeg = None
 
@@ -313,10 +319,13 @@ class LoadFFmpeg:
         readlen_bytes = readlen * 2
 
         if self.ffmpeg is None:
-            command = ["ffmpeg", "-hide_banner", "-loglevel", "error",
-                       "-i", "-", "-f", "s16le", "-c:a", "pcm_s16le", "-"]
-            self.ffmpeg = subprocess.Popen(command, stdin=infile,
-                                           stdout=subprocess.PIPE)
+            command = ["ffmpeg",
+                       #"-hide_banner", "-loglevel", "error",
+                       "-ss", str(sample / 40000),
+                       "-i", infile.name, "-f", "s16le", "-c:a", "pcm_s16le", "-"]
+            print(repr(command))
+            self.ffmpeg = subprocess.Popen(command, stdout=subprocess.PIPE)
+            self.position = sample
 
         if sample_bytes < self.position:
             # Seeking backwards - use data from rewind_buf
