@@ -7,6 +7,7 @@
 
     Copyright (C) 2018  William Andrew Steer
     Copyright (C) 2018-2019 Simon Inns
+    Copyright (C) 2019 Adam Sampson
 
     This file is part of ld-decode-tools.
 
@@ -124,6 +125,9 @@ void PalColour::buildLookUpTables()
 
         cdiv+=cfilt[f][0]+2*cfilt[f][2]+2*cfilt[f][1]+2*cfilt[f][3];
 
+        // XXX NTSC symmetry is different
+        // XXX NTSC should have different width filters for I and Q (work out which is which!)
+
         double  fy=f; if (fy>ya) fy=ya;
         double fffy=sqrt(f*f+4*4); if (fffy>ya) fffy=ya;
 
@@ -135,7 +139,12 @@ void PalColour::buildLookUpTables()
 
         // 0, 1 are vertical taps 0, +/- 2 (see filter loop below).
         yfilt[f][0]=256*(1+cos(M_PI*fy/ya))/d;
+if (videoParameters.isSourcePal) {
         yfilt[f][1]=0.2*256*(1+cos(M_PI*fffy/ya))/d;  // only used for PAL NB 0.2 makes much less sensitive to adjacent lines and reduces castellations and residual dot patterning
+} else {
+        yfilt[f][1]=0;
+        // XXX Should NTSC use lines +/- 1?
+}
 
         ydiv+=yfilt[f][0]+2*0+2*yfilt[f][1]+2*0;
     }
@@ -234,26 +243,41 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
 
                 // this is a classic "product-" or "synchronous demodulation" operation. We "detect" the burst relative to the arbitrary sine[] and cosine[] reference phases
                 qint32 bp=0, bq=0, bpo=0, bqo=0;
+if (videoParameters.isSourcePal) {
                 for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
                     bp+=(m[0][i]+(m[1][i]/2))/2;
                     bq+=(n[0][i]+(n[1][i]/2))/2;
                     bpo-=m[2][i]/2;
                     bqo-=n[2][i]/2;
                 }
+} else {
+                for (qint32 i=videoParameters.colourBurstStart; i<videoParameters.colourBurstEnd; i++) {
+                    bp+=(m[0][i]+(m[2][i]/2))/2;
+                    bq+=(n[0][i]+(n[2][i]/2))/2;
+                }
+}
 
                 bp/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  bq/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart);  // normalises those sums
                 bpo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); bqo/=(videoParameters.colourBurstEnd-videoParameters.colourBurstStart); // normalises those sums
 
                 // Generate V-switch phase - I forget exactly why this works, but it's essentially comparing the vector magnitude /difference/ between the
                 // phases of the burst on the present line and previous line to the magnitude of the burst. This may effectively be a dot-product operation...
-                if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) Vsw=1; else Vsw=-1;
+                if (!videoParameters.isSourcePal) {
+                    // NTSC -- no V-switch
+                    Vsw = 1;
+                } else if (((bp-bpo)*(bp-bpo)+(bq-bqo)*(bq-bqo))<(bp*bp+bq*bq)*2) {
+                    Vsw = 1;
+                } else {
+                    Vsw = -1;
+                }
 
                 // NB bp and bq will be of the order of 1000. CHECK!!
-                bp=(bp-bqo)/2;
-                bq=(bq+bpo)/2;
-
                 // ave the phase of burst from two lines to get -U (reference) phase out (burst phase is (-U +/-V)
                 // if NTSC then leave bp as-is, we take bp,bq as the underlying -U (reference) phase.
+                if (videoParameters.isSourcePal) {
+                    bp=(bp-bqo)/2;
+                    bq=(bq+bpo)/2;
+                }
 
                 //qint32 norm=sqrt(bp*bp+bq*bq)*refAmpl*16; // 16 empirical scaling factor
                 double norm=sqrt(bp*bp+bq*bq); // TRIAL - 7 Oct 2005
@@ -267,6 +291,7 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 // NB: Multiline averaging/filtering assumes perfect
                 //     inter-line phase registration...
 
+if (videoParameters.isSourcePal) {
                 double PU,QU, PV,QV, PY,QY;
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
                     PU=QU=0; PV=QV=0; PY=QY=0;
@@ -295,6 +320,32 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     pv[i]=PV; qv[i]=QV;
                     py[i]=PY; qy[i]=QY;
                 }
+} else {
+                double PU,QU, PY,QY;
+                for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++) {
+                    PU=QU=0; PY=QY=0;
+
+                    // Carry out 2D filtering. P and Q are the two arbitrary SINE & COS
+                    // phases components. U filters for U, V for V, and Y for Y
+
+                    qint32 l,r;
+
+                    for (qint32 b = 0; b <= arraySize; b++)
+                    {
+                        l=i-b; r=i+b;
+
+                        PY+=(m[0][r]+m[0][l])*yfilt[b][0]+(m[1][r]+m[1][l])*yfilt[b][1];
+                        QY+=(n[0][r]+n[0][l])*yfilt[b][0]+(n[1][r]+n[1][l])*yfilt[b][1];
+
+                        PU+=(m[0][r]+m[0][l])*cfilt[b][0]+(m[1][r]+m[1][l])*cfilt[b][1]+(n[2][r]+n[2][l])*cfilt[b][2]+(n[3][r]+n[3][l])*cfilt[b][3];
+                        QU+=(n[0][r]+n[0][l])*cfilt[b][0]+(n[1][r]+n[1][l])*cfilt[b][1]-(m[2][r]+m[2][l])*cfilt[b][2]-(m[3][r]+m[3][l])*cfilt[b][3];
+                    }
+                    //XXX Not using C filter at all here!
+                    //pu[i]=pv[i]=PU; qv[i]=qu[i]=QU;
+                    pu[i]=pv[i]=PY; qv[i]=qu[i]=QY;
+                    py[i]=PY; qy[i]=QY;
+                }
+}
 
                 // Define scan line pointer to output buffer using 16 bit unsigned words
                 quint16 *ptr = reinterpret_cast<quint16*>(outputFrame.data() + (((fieldLine * 2) + field) * videoParameters.fieldWidth * 6));
@@ -304,6 +355,11 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                 double R, G, B;
                 double rY, rU, rV;
 
+                // XXX Why is this necessary?
+                if (!videoParameters.isSourcePal) {
+                    scaledSaturation *= 1.4;
+                }
+
                 for (qint32 i = videoParameters.activeVideoStart; i < videoParameters.activeVideoEnd; i++)
                 {
                     // Generate the luminance (Y), by filtering out Fsc (by re-synthesising the detected py qy and subtracting), and subtracting the black-level
@@ -311,6 +367,21 @@ QByteArray PalColour::performDecode(QByteArray firstFieldData, QByteArray second
                     rY *= scaledBrightness;
                     if (rY < 0) rY = 0;
                     if (rY > 65535) rY = 65535;
+
+                    if (!videoParameters.isSourcePal) {
+                        // XXX Find a nicer way of doing this!
+                        // PAL colourburst is at 180 +/- 45 degrees.
+                        // NTSC colourbust is at 180 degrees, and NTSC I/Q axis is at 33 degrees relative to PAL U/V.
+                        // So rotating by 33 - 45 = -12 degrees, prior to rotation by the colorburst phase below, converts I/Q to U/V.
+                        const double theta = -12 * (M_PI / 180);
+                        double np;
+                        np    = pu[i] * cos(theta) - qu[i] * sin(theta);
+                        qu[i] = pu[i] * sin(theta) + qu[i] * cos(theta);
+                        pu[i] = np;
+                        np    = pv[i] * cos(theta) - qv[i] * sin(theta);
+                        qv[i] = pv[i] * sin(theta) + qv[i] * cos(theta);
+                        pv[i] = np;
+                    }
 
                     // the next two lines "rotate" the p&q components (at the arbitrary sine/cosine reference phase) backwards by the
                     // burst phase (relative to the arb phase), in order to recover U and V. The Vswitch is applied to flip the V-phase on alternate lines for PAL

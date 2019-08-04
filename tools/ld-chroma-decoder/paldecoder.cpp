@@ -33,14 +33,13 @@ PalDecoder::PalDecoder(bool blackAndWhiteParam)
 }
 
 bool PalDecoder::configure(const LdDecodeMetaData::VideoParameters &videoParameters) {
-    // Ensure the source video is PAL
-    if (!videoParameters.isSourcePal) {
-        qCritical() << "This decoder is for PAL video sources only";
-        return false;
-    }
-
     // Compute cropping parameters
-    setVideoParameters(config, videoParameters, 44, 620);
+    if (videoParameters.isSourcePal) {
+        setVideoParameters(config, videoParameters, 44, 620);
+    } else {
+        // PALcolour handles NTSC too! (Sort of.)
+        setVideoParameters(config, videoParameters, 40, 525);
+    }
 
     return true;
 }
@@ -66,8 +65,8 @@ void PalThread::run()
     QByteArray secondFieldData;
 
     // Frame metadata
-    qint32 firstFieldPhaseID; // not used in PAL
-    qint32 secondFieldPhaseID; // not used in PAL
+    qint32 firstFieldPhaseID; // not used by PALcolour (it detects the phase)
+    qint32 secondFieldPhaseID; // not used by PALcolour
     qreal burstMedianIre;
 
     while(!abort) {
@@ -81,8 +80,14 @@ void PalThread::run()
         // Calculate the saturation level from the burst median IRE
         // Note: This code works as a temporary MTF compensator whilst ld-decode gets
         // real MTF compensation added to it.
-        // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
-        qreal nominalBurstIre = 300 * (100.0 / 700) / 2;
+        qreal nominalBurstIre;
+        if (config.videoParameters.isSourcePal) {
+            // PAL burst is 300 mV p-p (about 43 IRE, as 100 IRE = 700 mV)
+            nominalBurstIre = 300 * (100.0 / 700) / 2;
+        } else {
+            // NTSC burst is 40 IRE p-p
+            nominalBurstIre = 40 / 2;
+        }
         qreal tSaturation = 100 * (nominalBurstIre / burstMedianIre);
 
         if (config.blackAndWhite) {
