@@ -4,13 +4,6 @@
 #include "ld-decoder.h"
 #include "deemp.h"
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/video/tracking.hpp> 
-
-using namespace cv;
-
 int ofd = 1;
 char *image_base = "FRAME";
 
@@ -30,15 +23,11 @@ bool f_colorlpf_hq = true;
 
 double nn_cscale = 32768.0;
 
-bool f_monitor = false;
-
 double p_3dcore = -1;
 double p_3drange = -1;
 double p_2dcore = -1;
 double p_2drange = -1;
 double p_3d2drej = 2;
-
-bool f_opticalflow = true;
 
 int f_debugline = -1000;
 	
@@ -351,52 +340,7 @@ class Comb
 				}
 			}	
 		}	
-#if 0
-		void Split3D(int f, bool opt_flow = false) 
-		{
-			for (int l = 24; l < in_y; l++) {
-				uint16_t *line = &Frame[f].rawbuffer[l * in_x];	
-		
-				// shortcuts for previous/next 1D/pixel lines	
-				uint16_t *p3line = &Frame[0].rawbuffer[l * in_x];	
-				uint16_t *n3line = &Frame[2].rawbuffer[l * in_x];	
-		
-				// a = fir1(16, 0.1); printf("%.15f, ", a)
-				Filter lp_3d({0.005719569452904, 0.009426612841315, 0.019748592575455, 0.036822680065252, 0.058983880135427, 0.082947830292278, 0.104489989820068, 0.119454688318951, 0.124812312996699, 0.119454688318952, 0.104489989820068, 0.082947830292278, 0.058983880135427, 0.036822680065252, 0.019748592575455, 0.009426612841315, 0.005719569452904}, {1.0});
 
-				// need to prefilter K using a LPF
-				double _k[in_x];
-				for (int h = 4; (dim >= 3) && (h < (in_x - 4)); h++) {
-					int adr = (l * in_x) + h;
-
-					double __k = abs(Frame[0].rawbuffer[adr] - Frame[2].rawbuffer[adr]); 
-					__k += abs((Frame[1].rawbuffer[adr] - Frame[2].rawbuffer[adr]) - (Frame[1].rawbuffer[adr] - Frame[0].rawbuffer[adr])); 
-
-					if (h > 12) _k[h - 8] = lp_3d.feed(__k);
-					if (h >= 836) _k[h] = __k;
-				}
-	
-				for (int h = 4; h < (in_x - 4); h++) {
-					if (opt_flow) {
-						Frame[f].clpbuffer[2][l][h] = (p3line[h] - line[h]); 
-					} else {
-						Frame[f].clpbuffer[2][l][h] = (((p3line[h] + n3line[h]) / 2) - line[h]); 
-						Frame[f].combk[2][l][h] = clamp(1 - ((_k[h] - (p_3dcore)) / p_3drange), 0, 1);
-					}
-					if (l == (f_debugline + lineoffset)) {
-//						cerr << "3DC " << h << ' ' << k2 << ' ' << adj << ' ' << k[h] << endl;
-					}
-				
-					if ((l >= 2) && (l <= 502)) {
-						Frame[f].combk[1][l][h] = 1 - Frame[f].combk[2][l][h];
-					}
-					
-					// 1D 
-					Frame[f].combk[0][l][h] = 1 - Frame[f].combk[2][l][h] - Frame[f].combk[1][l][h];
-				}
-			}	
-		}	
-#endif
 		void SplitIQ(int f) {
 			double mse = 0.0;
 			double me = 0.0;
@@ -653,87 +597,6 @@ class Comb
 			}
 		}
 
-		void OpticalFlow3D(cline_t cbuf[in_y]) {
-			static Mat prev[2];
-			static Mat flow[2];	
-			static int fcount = 0;
-	
-			const int cysize = 242;
-			const int cxsize = in_x - 70;
-	
-			uint16_t fieldbuf[in_x * cysize];
-			uint16_t flowmap[in_y][cxsize];
-
-			memset(fieldbuf, 0, sizeof(fieldbuf));
-			memset(flowmap, 0, sizeof(flowmap));
-
-			int y;
-
-			Mat pic;
-
-			for (int field = 0; field < 2; field++) {
-				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < cxsize; x++) {
-						fieldbuf[(y * cxsize) + x] = cbuf[23 + field + (y * 2)].p[70 + x].y;
-					}
-				}
-				pic = Mat(242, cxsize, CV_16UC1, fieldbuf);
-				if (fcount) calcOpticalFlowFarneback(pic, prev[field], flow[field], 0.5, 4, 60, 3, 7, 1.5, (fcount > 1) ? OPTFLOW_USE_INITIAL_FLOW : 0);
-				prev[field] = pic.clone();
-			}
-
-			double min = p_3dcore;  // 0.0
-			double max = p_3drange; // 0.5
-
-			if (fcount) {
-				for (y = 0; y < cysize; y++) {
-					for (int x = 0; x < cxsize; x++) {
-            					const Point2f& flowpoint1 = flow[0].at<Point2f>(y, x);  
-	            				const Point2f& flowpoint2 = flow[1].at<Point2f>(y, x);  
-							
-						double c1 = 1 - clamp((ctor(flowpoint1.y, flowpoint1.x * 2) - min) / max, 0, 1);
-						double c2 = 1 - clamp((ctor(flowpoint2.y, flowpoint2.x * 2) - min) / max, 0, 1);
-			
-						double c = (c1 < c2) ? c1 : c2;
-
-						// HACK:  This goes around a 1-frame delay	
-						Frame[1].combk[2][(y * 2)][70 + x] = c;
-						Frame[1].combk[2][(y * 2) + 1][70 + x] = c;
-
-						uint16_t fm = clamp(c * 65535, 0, 65535);
-						flowmap[(y * 2)][0 + x] = fm;
-						flowmap[(y * 2) + 1][0 + x] = fm;
-					}
-				}
-
-				Mat fpic = Mat(in_y - 23, cxsize, CV_16UC1, flowmap);
-				Mat rpic;
-				resize(fpic, rpic, Size(1280,960));
-	
-//				imshow("comb", rpic);	
-//				waitKey(f_oneframe ? 0 : 1);
-			}
-			fcount++; 
-		}
-
-		void DrawFrame(uint16_t *obuf, int owidth = 1052) {
-			for (int y = 0; y < 576; y++) {
-				for (int x = 0; x < owidth; x++) {
-					BGRoutput[(((y * owidth) + x) * 3) + 0] = obuf[(((y * owidth) + x) * 3) + 2];
-					BGRoutput[(((y * owidth) + x) * 3) + 1] = obuf[(((y * owidth) + x) * 3) + 1];
-					BGRoutput[(((y * owidth) + x) * 3) + 2] = obuf[(((y * owidth) + x) * 3) + 0];
-				}
-			}
-				
-			Mat pic = Mat(576, owidth, CV_16UC3, BGRoutput);
-			Mat rpic;
-
-			resize(pic, rpic, Size(1280,960));
-
-			imshow("comb", rpic);	
-			waitKey(f_oneframe ? 0 : 1);
-		}
-
 	public:
 		Comb() {
 			fieldcount = curline = linecount = -1;
@@ -778,10 +641,6 @@ class Comb
 				write(ofd, obuf, (owidth * linesout * 3) * 2);
 				close(ofd);
 			}
-
-			if (f_monitor) {
-				DrawFrame(obuf, owidth);
-			}	
 
 			if (f_oneframe) exit(0);
 			frames_out++;
@@ -842,24 +701,6 @@ class Comb
 					Frame[0].cbuf[l].p[h].y = line[h]; 
 				}
 			}
-	#if 0	
-			if (dim >= 3) {
-				if (f_opticalflow && (framecount >= 1)) {
-					memcpy(tbuf, Frame[0].cbuf, sizeof(tbuf));	
-					AdjustY(0, tbuf);
-					DoYNR(0, tbuf, 5);
-					DoCNR(0, tbuf, 2);
-					OpticalFlow3D(tbuf);
-				}
-
-				if (framecount < 2) {
-					framecount++;
-					return;
-				}
-
-				Split3D(f, f_opticalflow); 
-			}
-#endif
 			SplitIQ(f);
 
 			memcpy(tbuf, Frame[f].cbuf, sizeof(tbuf));	
@@ -953,7 +794,7 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	
-	while ((c = getopt(argc, argv, "WQLakN:tFc:r:R:m8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
+	while ((c = getopt(argc, argv, "WQLakN:tc:r:R:8OwvDd:Bb:I:w:i:o:fphn:l:")) != -1) {
 		switch (c) {
 			case 'W':
 				f_wide = !f_wide;
@@ -963,9 +804,6 @@ int main(int argc, char *argv[])
 				break;
 			case 'Q':
 				f_colorlpf_hq = !f_colorlpf_hq;
-				break;
-			case 'F':
-				f_opticalflow = false;
 				break;
 			case 'a':
 				f_adaptive2d = !f_adaptive2d;
@@ -1035,9 +873,6 @@ int main(int argc, char *argv[])
 				// black out a desired line
 				sscanf(optarg, "%d", &f_debugline);
 				break;
-			case 'm':
-				f_monitor = true;
-				break;
 			case 't': // training mode - write images as well
 				f_training = true;
 				f_writeimages = true;	
@@ -1051,20 +886,10 @@ int main(int argc, char *argv[])
 		} 
 	} 
 
-	if (f_monitor) {
-		namedWindow("comb", WINDOW_AUTOSIZE);
-	}
-
-	if (f_opticalflow) {
-		if (p_3dcore < 0) p_3dcore = 0;
-		if (p_3drange < 0) p_3drange = 0.5;
-	} else {
-		if (p_3dcore < 0) p_3dcore = 1.25;
-		if (p_3drange < 0) p_3drange = 5.5;
-		p_3dcore *= irescale;
-		p_3drange *= irescale;
-		p_3d2drej *= irescale;
-	}
+	if (p_3dcore < 0) p_3dcore = 1.25;
+	if (p_3drange < 0) p_3drange = 5.5;
+	p_3dcore *= irescale;
+	p_3drange *= irescale;
 
 	p_2dcore = 0 * irescale;
 	p_2drange = 10 * irescale;
@@ -1096,11 +921,6 @@ int main(int argc, char *argv[])
 			if (rv2 <= 0) exit(0);
 			rv += rv2;
 		}
-	}
-
-	if (f_monitor) {
-		cerr << "Done - waiting for key\n";
-		waitKey(0);
 	}
 
 	return 0;
