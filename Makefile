@@ -2,7 +2,7 @@
 
 # Note: Targets do not include auto-generated .h files, which means
 #       that make clean will not remove them.
-TARGETS=cx ld-ldf-reader
+TARGETS=cx ld-ldf-reader comb-ntsc comb-pal
 
 CFLAGS=-g -O2 -fno-omit-frame-pointer -march=native -Itools/ld-chroma-decoder
 
@@ -23,4 +23,8 @@ deemp.h: filtermaker.py
 ld-ldf-reader: ld-ldf-reader.c
 	clang -o ld-ldf-reader ld-ldf-reader.c -Wno-deprecated-declarations -lavcodec -lavutil -lavformat -O2
 
+comb-ntsc: comb-ntsc.cxx deemp.h
+	clang++ -std=c++11  -Wall $(CFLAGS) -o comb-ntsc comb-ntsc.cxx
 
+comb-pal: comb-pal.cxx deemp.h
+	clang++ -std=c++11  -Wall $(CFLAGS) -o comb-pal comb-pal.cxx
