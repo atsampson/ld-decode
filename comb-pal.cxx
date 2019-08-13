@@ -186,13 +186,13 @@ class Comb
 
 		frame_t Frame[nframes];
 
-		Filter *f_hpy, *f_hpi, *f_hpq;
-		Filter *f_hpvy, *f_hpvi, *f_hpvq;
+		IIRFilter<25, 1> *f_hpy, *f_hpvy;
+		IIRFilter<17, 1> *f_hpi, *f_hpq, *f_hpvi, *f_hpvq;
 
 		void FilterIQ(cline_t cbuf[in_y], int fnum) {
 			for (int l = 24; l < in_y; l++) {
-				Filter f_i(f_colorlpi);
-				Filter f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
+				auto f_i(f_colorlpi);
+				auto f_q(f_colorlpf_hq ? f_colorlpi : f_colorlpq);
 
 				int qoffset = f_colorlpf_hq ? f_colorlpi_offset : f_colorlpq_offset;
 
@@ -226,8 +226,8 @@ class Comb
 				uint16_t *line = &Frame[fnum].rawbuffer[l * in_x];	
 				bool invertphase = false; // (line[0] == 16384);
 
-				Filter f_1di(f_colorlpi);
-				Filter f_1dq(f_colorlpq);
+				auto f_1di(f_colorlpi);
+				auto f_1dq(f_colorlpq);
 				int f_toffset = 8;
 
 				for (int h = 4; h < (in_x - 4); h++) {
@@ -608,13 +608,13 @@ class Comb
 
 			f_oddframe = false;	
 		
-			f_hpy = new Filter(f_nr);
-			f_hpi = new Filter(f_nrc);
-			f_hpq = new Filter(f_nrc);
+			f_hpy = new IIRFilter<25, 1>(f_nr);
+			f_hpi = new IIRFilter<17, 1>(f_nrc);
+			f_hpq = new IIRFilter<17, 1>(f_nrc);
 			
-			f_hpvy = new Filter(f_nr);
-			f_hpvi = new Filter(f_nrc);
-			f_hpvq = new Filter(f_nrc);
+			f_hpvy = new IIRFilter<25, 1>(f_nr);
+			f_hpvi = new IIRFilter<17, 1>(f_nrc);
+			f_hpvq = new IIRFilter<17, 1>(f_nrc);
 
 			memset(output, 0, sizeof(output));
 		}
