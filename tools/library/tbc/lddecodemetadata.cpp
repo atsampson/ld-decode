@@ -24,6 +24,8 @@
 
 #include "lddecodemetadata.h"
 
+#include <QJsonDocument>
+
 LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
 {
     // Set defaults
@@ -34,15 +36,30 @@ LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
 // metadata structure read for use
 bool LdDecodeMetaData::read(QString fileName)
 {
-    // Open the JSON file
     qDebug() << "LdDecodeMetaData::read(): Loading JSON file" << fileName;
-    if (!json.loadFile(fileName)) {
-        qCritical() << "JSON wax library error:" << json.errorMsg();
-        qCritical("Opening JSON file failed: JSON file cannot be opened/does not exist");
 
+    // Open the JSON file
+    QFile file(fileName);
+    if (!file.open(QFile::ReadOnly)) {
+        qCritical("Opening JSON file failed: JSON file cannot be opened/does not exist");
         return false;
     }
 
+    // Read the data
+    QJsonParseError parseError;
+    QJsonDocument json = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (json.isNull()) {
+        qCritical() << "JSON parsing error:" << parseError.errorString();
+        return false;
+    }
+
+    // Extract the object at the root
+    if (!json.isObject()) {
+        qCritical() << "JSON is not an object";
+        return false;
+    }
+    jsonRoot = json.object();
+        
     // Default to the standard still-frame field order (of first field first)
     isFirstFieldFirst = true;
 
@@ -52,12 +69,15 @@ bool LdDecodeMetaData::read(QString fileName)
 // This method copies the metadata structure into a JSON metadata file
 bool LdDecodeMetaData::write(QString fileName)
 {
+#warning not done
+#if 0
     // Write the JSON object
     qDebug() << "LdDecodeMetaData::write(): Writing JSON metadata to:" << fileName;
     if (!json.saveAs(fileName, JsonWax::Compact)) {
         qCritical("Writing JSON metadata file failed!");
         return false;
     }
+#endif
 
     return true;
 }
@@ -119,25 +139,26 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 {
     VideoParameters videoParameters;
 
-    // Read the video paramters
-    if (json.size({"videoParameters"}) > 0) {
-        videoParameters.numberOfSequentialFields = json.value({"videoParameters", "numberOfSequentialFields"}).toInt();
-        videoParameters.isSourcePal = json.value({"videoParameters", "isSourcePal"}).toBool();
+    // Read the video parameters
+    const QJsonValue jsonParams = jsonRoot["videoParameters"];
+    if (!jsonParams.isUndefined()) {
+        videoParameters.numberOfSequentialFields = jsonParams["numberOfSequentialFields"].toInt();
+        videoParameters.isSourcePal = jsonParams["isSourcePal"].toBool();
 
-        videoParameters.colourBurstStart = json.value({"videoParameters", "colourBurstStart"}).toInt();
-        videoParameters.colourBurstEnd = json.value({"videoParameters", "colourBurstEnd"}).toInt();
-        videoParameters.activeVideoStart = json.value({"videoParameters", "activeVideoStart"}).toInt();
-        videoParameters.activeVideoEnd = json.value({"videoParameters", "activeVideoEnd"}).toInt();
+        videoParameters.colourBurstStart = jsonParams["colourBurstStart"].toInt();
+        videoParameters.colourBurstEnd = jsonParams["colourBurstEnd"].toInt();
+        videoParameters.activeVideoStart = jsonParams["activeVideoStart"].toInt();
+        videoParameters.activeVideoEnd = jsonParams["activeVideoEnd"].toInt();
 
-        videoParameters.white16bIre = json.value({"videoParameters", "white16bIre"}).toInt();
-        videoParameters.black16bIre = json.value({"videoParameters", "black16bIre"}).toInt();
+        videoParameters.white16bIre = jsonParams["white16bIre"].toInt();
+        videoParameters.black16bIre = jsonParams["black16bIre"].toInt();
 
-        videoParameters.fieldWidth = json.value({"videoParameters", "fieldWidth"}).toInt();
-        videoParameters.fieldHeight = json.value({"videoParameters", "fieldHeight"}).toInt();
-        videoParameters.sampleRate = json.value({"videoParameters", "sampleRate"}).toInt();
-        videoParameters.fsc = json.value({"videoParameters", "fsc"}).toInt();
+        videoParameters.fieldWidth = jsonParams["fieldWidth"].toInt();
+        videoParameters.fieldHeight = jsonParams["fieldHeight"].toInt();
+        videoParameters.sampleRate = jsonParams["sampleRate"].toInt();
+        videoParameters.fsc = jsonParams["fsc"].toInt();
 
-        videoParameters.isMapped = json.value({"videoParameters", "isMapped"}).toBool();
+        videoParameters.isMapped = jsonParams["isMapped"].toBool();
     } else {
         qCritical("JSON file invalid: videoParameters object is not defined");
         return videoParameters;
@@ -150,23 +171,27 @@ LdDecodeMetaData::VideoParameters LdDecodeMetaData::getVideoParameters()
 void LdDecodeMetaData::setVideoParameters (LdDecodeMetaData::VideoParameters _videoParameters)
 {
     // Write the video parameters
-    json.setValue({"videoParameters", "numberOfSequentialFields"}, getNumberOfFields());
-    json.setValue({"videoParameters", "isSourcePal"}, _videoParameters.isSourcePal);
+    QJsonObject jsonParams = jsonRoot["videoParameters"].toObject();
 
-    json.setValue({"videoParameters", "colourBurstStart"}, _videoParameters.colourBurstStart);
-    json.setValue({"videoParameters", "colourBurstEnd"}, _videoParameters.colourBurstEnd);
-    json.setValue({"videoParameters", "activeVideoStart"}, _videoParameters.activeVideoStart);
-    json.setValue({"videoParameters", "activeVideoEnd"}, _videoParameters.activeVideoEnd);
+    jsonParams.insert("numberOfSequentialFields", getNumberOfFields());
+    jsonParams.insert("isSourcePal", _videoParameters.isSourcePal);
 
-    json.setValue({"videoParameters", "white16bIre"}, _videoParameters.white16bIre);
-    json.setValue({"videoParameters", "black16bIre"}, _videoParameters.black16bIre);
+    jsonParams.insert("colourBurstStart", _videoParameters.colourBurstStart);
+    jsonParams.insert("colourBurstEnd", _videoParameters.colourBurstEnd);
+    jsonParams.insert("activeVideoStart", _videoParameters.activeVideoStart);
+    jsonParams.insert("activeVideoEnd", _videoParameters.activeVideoEnd);
 
-    json.setValue({"videoParameters", "fieldWidth"}, _videoParameters.fieldWidth);
-    json.setValue({"videoParameters", "fieldHeight"}, _videoParameters.fieldHeight);
-    json.setValue({"videoParameters", "sampleRate"}, _videoParameters.sampleRate);
-    json.setValue({"videoParameters", "fsc"}, _videoParameters.fsc);
+    jsonParams.insert("white16bIre", _videoParameters.white16bIre);
+    jsonParams.insert("black16bIre", _videoParameters.black16bIre);
 
-    json.setValue({"videoParameters", "isMapped"}, _videoParameters.isMapped);
+    jsonParams.insert("fieldWidth", _videoParameters.fieldWidth);
+    jsonParams.insert("fieldHeight", _videoParameters.fieldHeight);
+    jsonParams.insert("sampleRate", _videoParameters.sampleRate);
+    jsonParams.insert("fsc", _videoParameters.fsc);
+
+    jsonParams.insert("isMapped", _videoParameters.isMapped);
+
+    jsonRoot["videoParameters"] = jsonParams;
 }
 
 // This method returns the pcmAudioParameters metadata

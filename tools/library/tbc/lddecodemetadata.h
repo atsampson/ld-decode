@@ -26,11 +26,10 @@
 #define LDDECODEMETADATA_H
 
 #include <QObject>
+#include <QJsonObject>
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
-
-#include "../JsonWax/JsonWax.h"
 
 class LdDecodeMetaData : public QObject
 {
@@ -185,7 +184,7 @@ signals:
 public slots:
 
 private:
-    JsonWax json;
+    QJsonObject jsonRoot;
     bool isFirstFieldFirst;
 
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);
