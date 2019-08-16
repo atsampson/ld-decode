@@ -44,8 +44,11 @@ public:
 
     struct Configuration {
         bool blackAndWhite = false;
+
         bool useTransformFilter = false;
         double transformThreshold = 0.4;
+        qint32 transformYTile = 16;
+        qint32 transformXTile = 32;
 
         // Interlaced line 44 is PAL line 23 (the first active half-line)
         qint32 firstActiveLine = 44;

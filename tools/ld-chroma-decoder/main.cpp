@@ -173,6 +173,15 @@ int main(int argc, char *argv[])
                                                 QCoreApplication::translate("main", "number"));
     parser.addOption(transformThresholdOption);
 
+    QCommandLineOption transformYTileOption(QStringList() << "transform-ytile",
+                                            QCoreApplication::translate("main", "Transform: Y tile size in lines (default 16)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(transformYTileOption);
+
+    QCommandLineOption transformXTileOption(QStringList() << "transform-xtile",
+                                            QCoreApplication::translate("main", "Transform: X tile size in samples (default 32)"),
+                                            QCoreApplication::translate("main", "number"));
+    parser.addOption(transformXTileOption);
 
     // -- Positional arguments --
 
@@ -221,6 +230,8 @@ int main(int argc, char *argv[])
     qint32 length = -1;
     qint32 maxThreads = QThread::idealThreadCount();
     double transformThreshold = 0.4;
+    qint32 transformYTile = 16;
+    qint32 transformXTile = 32;
 
     if (parser.isSet(startFrameOption)) {
         startFrame = parser.value(startFrameOption).toInt();
@@ -254,6 +265,26 @@ int main(int argc, char *argv[])
 
     if (parser.isSet(transformThresholdOption)) {
         transformThreshold = parser.value(transformThresholdOption).toDouble();
+    }
+
+    if (parser.isSet(transformYTileOption)) {
+        transformYTile = parser.value(transformYTileOption).toInt();
+
+        if (transformYTile < 1 || transformYTile > 64) {
+            // Quit with error
+            qCritical("Transform Y tile size must be between 1 and 64");
+            return -1;
+        }
+    }
+
+    if (parser.isSet(transformXTileOption)) {
+        transformXTile = parser.value(transformXTileOption).toInt();
+
+        if (transformXTile < 1 || transformXTile > 64) {
+            // Quit with error
+            qCritical("Transform X tile size must be between 1 and 64");
+            return -1;
+        }
     }
 
     // Process the command line options
@@ -293,7 +324,7 @@ int main(int argc, char *argv[])
     if (decoderName == "pal2d") {
         decoder.reset(new PalDecoder(blackAndWhite));
     } else if (decoderName == "transform2d") {
-        decoder.reset(new PalDecoder(blackAndWhite, true, transformThreshold));
+        decoder.reset(new PalDecoder(blackAndWhite, true, transformThreshold, transformYTile, transformXTile));
     } else if (decoderName == "ntsc2d") {
         decoder.reset(new NtscDecoder(blackAndWhite, whitePoint, false, false));
     } else if (decoderName == "ntsc3d") {

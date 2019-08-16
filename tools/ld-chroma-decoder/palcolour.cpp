@@ -77,7 +77,8 @@ void PalColour::updateConfiguration(const LdDecodeMetaData::VideoParameters &_vi
 
     if (configuration.useTransformFilter) {
         // Configure Transform PAL
-        transformPal.updateConfiguration(videoParameters, configuration.transformThreshold);
+        transformPal.updateConfiguration(videoParameters, configuration.transformThreshold,
+                                         configuration.transformYTile, configuration.transformXTile);
     }
 
     configurationSet = true;

@@ -41,9 +41,10 @@ public:
     ~TransformPal();
 
     // threshold is the similarity threshold for the filter (values from 0-1
-    // are meaningful; 0.6 is pyctools-pal's default)
+    // are meaningful; 0.6 is pyctools-pal's default).
+    // yTile/xTile are the FFT tile size.
     void updateConfiguration(const LdDecodeMetaData::VideoParameters &videoParameters,
-                             double threshold);
+                             double threshold, qint32 yTile, qint32 xTile);
 
     // Filter an input field.
     // Returns a pointer to an array of the same size (owned by this object)
@@ -51,7 +52,7 @@ public:
     const double *filterField(qint32 firstFieldLine, qint32 lastFieldLine, const QByteArray &fieldData);
 
 private:
-    // Apply the frequency-domain filter
+    void freeConfiguration();
     void applyFilter();
 
     // Configuration parameters
@@ -62,23 +63,31 @@ private:
     // Maximum field size, based on PAL
     static constexpr qint32 MAX_WIDTH = 1135;
 
+    // Bounds on FFT tile size
+    static constexpr qint32 MIN_YTILE = 1;
+    static constexpr qint32 MAX_YTILE = 64;
+    static constexpr qint32 MIN_XTILE = 1;
+    static constexpr qint32 MAX_XTILE = 64;
+
     // FFT input and output sizes.
-    // The input field is divided into tiles of XTILE x YTILE, with adjacent
-    // tiles overlapping by HALFXTILE/HALFYTILE.
-    static constexpr qint32 YTILE = 16;
-    static constexpr qint32 HALFYTILE = YTILE / 2;
-    static constexpr qint32 XTILE = 32;
-    static constexpr qint32 HALFXTILE = XTILE / 2;
+    // The input field is divided into tiles of xTile x yTile, with adjacent
+    // tiles overlapping by half a tile.
+    //
+    // For the Transform PAL filter, the size needs to be chosen so that the
+    // carrier frequencies land in the middle of a cell or on the boundary
+    // between cells.
+    qint32 yTile;
+    qint32 xTile;
 
     // Each tile is converted to the frequency domain using forwardPlan, which
-    // gives a complex result of size XCOMPLEX x YCOMPLEX (roughly half the
+    // gives a complex result of size xComplex x yComplex (roughly half the
     // size of the input, because the input data was real, i.e. contained no
     // negative frequencies).
-    static constexpr qint32 YCOMPLEX = YTILE;
-    static constexpr qint32 XCOMPLEX = (XTILE / 2) + 1;
+    qint32 yComplex;
+    qint32 xComplex;
 
     // Window function applied before the FFT
-    double windowFunction[YTILE][XTILE];
+    double windowFunction[MAX_YTILE][MAX_XTILE];
 
     // FFT input/output buffers
     double *fftReal;
