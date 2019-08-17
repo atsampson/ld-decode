@@ -2134,6 +2134,7 @@ class LDdecode:
             #self.outfile_json = open(fname_out + '.json', 'wb')
             self.outfile_audio = open(fname_out + '.pcm', 'wb') if analog_audio else None
             #self.outfile_efm = open(fname_out + '.efm', 'wb') if digital_audio else None
+            self.outfile_efm_raw = open(fname_out + '.efm_raw', 'wb') if digital_audio else None
         else:
             self.outfile_video = None
             self.outfile_audio = None
@@ -2246,6 +2247,7 @@ class LDdecode:
 
         if self.digital_audio == True:
             self.outfile_efm.write(efm)
+            self.outfile_efm_raw.write(efm)
         else:
             efm = None
         
