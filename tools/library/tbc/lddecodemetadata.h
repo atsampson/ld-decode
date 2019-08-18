@@ -30,7 +30,7 @@
 #include <QTemporaryFile>
 #include <QDebug>
 
-#include "../JsonWax/JsonWax.h"
+class JsonWax;
 
 class LdDecodeMetaData : public QObject
 {
@@ -140,6 +140,7 @@ public:
     };
 
     explicit LdDecodeMetaData(QObject *parent = nullptr);
+    ~LdDecodeMetaData();
 
     bool read(QString fileName);
     bool write(QString fileName);
@@ -185,7 +186,12 @@ signals:
 public slots:
 
 private:
-    JsonWax json;
+    // These refer to the same object -- because JsonWax is only available as
+    // headers, this avoids including the whole of JsonWax's source in every
+    // file that uses this header.
+    JsonWax *jsonPtr;
+    JsonWax &json;
+
     bool isFirstFieldFirst;
 
     qint32 getFieldNumber(qint32 frameNumber, qint32 field);

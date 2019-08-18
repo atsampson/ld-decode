@@ -24,10 +24,18 @@
 
 #include "lddecodemetadata.h"
 
-LdDecodeMetaData::LdDecodeMetaData(QObject *parent) : QObject(parent)
+#include "../JsonWax/JsonWax.h"
+
+LdDecodeMetaData::LdDecodeMetaData(QObject *parent)
+    : QObject(parent), jsonPtr(new JsonWax), json(*jsonPtr)
 {
     // Set defaults
     isFirstFieldFirst = false;
+}
+
+LdDecodeMetaData::~LdDecodeMetaData()
+{
+    delete jsonPtr;
 }
 
 // This method opens the JSON metadata file and reads the content into the
