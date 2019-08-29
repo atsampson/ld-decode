@@ -789,8 +789,6 @@ int main(int argc, char *argv[])
 	char out_filename[256] = "";
 
 	cerr << std::setprecision(10);
-	cerr << argc << endl;
-	cerr << strncmp(argv[1], "-", 1) << endl;
 
 	opterr = 0;
 	
@@ -882,7 +880,8 @@ int main(int argc, char *argv[])
 				f_showk = true;
 				break;
 			default:
-				return -1;
+				usage();
+				return 1;
 		} 
 	} 
 
