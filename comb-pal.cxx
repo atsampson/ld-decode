@@ -139,8 +139,8 @@ int write_locs = -1;
 
 const int nframes = 3;	// 3 frames needed for 3D buffer - for now
 
-const int in_y = 610;
-const int in_x = 1052;
+const int in_y = 626;
+const int in_x = 1135;
 //const int in_size = in_y * in_x;
 
 typedef struct cline {
@@ -619,7 +619,7 @@ class Comb
 			memset(output, 0, sizeof(output));
 		}
 
-		void WriteFrame(uint16_t *obuf, int owidth = 1052, int fnum = 0) {
+		void WriteFrame(uint16_t *obuf, int owidth = in_x, int fnum = 0) {
 			cerr << "WR" << fnum << endl;
 			if (!f_writeimages) {
 				if (!f_write8bit) {
@@ -721,7 +721,7 @@ class Comb
 			int fstart = -1;
 			uint16_t *fbuf = Frame[fnum].rawbuffer;
 
-			int out_x = f_wide ? in_x : 1052 - 78;
+			int out_x = f_wide ? in_x : in_x - 78;
 			int roffset = f_wide ? 0 : 78;
 
 			if (!f_pulldown) {
