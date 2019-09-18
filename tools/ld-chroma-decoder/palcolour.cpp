@@ -35,6 +35,7 @@
 #include "transformpal2d.h"
 #include "transformpal3d.h"
 
+#include <algorithm>
 #include <cassert>
 
 /*!
@@ -257,23 +258,38 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
         outputFrames[i].fill(0);
     }
 
+    // Initialise LineInfo objects for all active lines
+    QVector<LineInfo> lines(frameHeight);
+    for (qint32 frameLine = configuration.firstActiveLine; frameLine < configuration.lastActiveLine; frameLine++) {
+        lines[frameLine].number = frameLine / 2;
+    }
+
     for (qint32 i = startIndex, j = 0, k = 0; i < endIndex; i += 2, j += 2, k++) {
-        // Calculate the chroma gain from the burst median IRE, using the *first*
-        // field's burst amplitude to compensate both fields.
-        // Note: This code works as a temporary MTF compensator whilst ld-decode gets
-        // real MTF compensation added to it.
-        //
+        // Detect the colourburst phase and amplitude for all active lines
+        detectBursts(inputFields[i], lines);
+        detectBursts(inputFields[i + 1], lines);
+
+        // Compute the median of the colourburst amplitudes across the frame
+        // XXX This is ugly
+        QVector<double> amplitudes;
+        for (qint32 frameLine = configuration.firstActiveLine; frameLine < configuration.lastActiveLine; frameLine++) {
+            amplitudes.push_back(lines[frameLine].burstAmplitude);
+        }
+        std::sort(amplitudes.begin(), amplitudes.end());
+        const double medianAmplitude = amplitudes[amplitudes.size() / 2];
+
+        // Adjust the chroma gain based on the expected colourburst amplitude.
         // The PAL colourburst has peak-to-peak amplitude of 3/7 of the
         // reference black - reference white range.
-        const double nominalBurstIRE = (3.0 / 7.0) * 100.0 * 0.5;
-        double chromaGain = configuration.chromaGain * nominalBurstIRE / inputFields[i].field.medianBurstIRE;
+        const double nominalAmplitude = 0.5 * (videoParameters.white16bIre - videoParameters.black16bIre) * 3.0 / 7.0;
+        double chromaGain = nominalAmplitude / medianAmplitude;
 
         if (configuration.blackAndWhite) {
             chromaGain = 0.0;
         }
 
-        decodeField(inputFields[i], chromaData[j], chromaGain, outputFrames[k]);
-        decodeField(inputFields[i + 1], chromaData[j + 1], chromaGain, outputFrames[k]);
+        decodeField(inputFields[i], chromaData[j], lines, chromaGain, outputFrames[k]);
+        decodeField(inputFields[i + 1], chromaData[j + 1], lines, chromaGain, outputFrames[k]);
     }
 
     if (configuration.showFFTs && configuration.chromaFilter != palColourFilter) {
@@ -283,8 +299,7 @@ void PalColour::decodeFrames(const QVector<SourceField> &inputFields, qint32 sta
     }
 }
 
-// Decode one field into outputFrame
-void PalColour::decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame)
+void PalColour::detectBursts(const SourceField &inputField, QVector<LineInfo> &lines)
 {
     // Pointer to the composite signal data
     const quint16 *compPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
@@ -292,10 +307,25 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
     const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
     const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
     for (qint32 fieldLine = firstLine; fieldLine < lastLine; fieldLine++) {
-        LineInfo line(fieldLine);
+        LineInfo &line = lines[(2 * fieldLine) + inputField.getOffset()];
+        assert(fieldLine == line.number);
 
-        // Detect the colourburst from the composite signal
         detectBurst(line, compPtr);
+    }
+}
+
+// Decode one field into outputFrame
+void PalColour::decodeField(const SourceField &inputField, const double *chromaData, const QVector<LineInfo> &lines,
+                            double chromaGain, QByteArray &outputFrame)
+{
+    // Pointer to the composite signal data
+    const quint16 *compPtr = reinterpret_cast<const quint16 *>(inputField.data.data());
+
+    const qint32 firstLine = inputField.getFirstActiveLine(configuration.firstActiveLine);
+    const qint32 lastLine = inputField.getLastActiveLine(configuration.lastActiveLine);
+    for (qint32 fieldLine = firstLine; fieldLine < lastLine; fieldLine++) {
+        const LineInfo &line = lines[(2 * fieldLine) + inputField.getOffset()];
+        assert(fieldLine == line.number);
 
         if (configuration.chromaFilter == palColourFilter) {
             // Decode chroma and luma from the composite signal
@@ -305,11 +335,6 @@ void PalColour::decodeField(const SourceField &inputField, const double *chromaD
             decodeLine<double, true>(inputField, chromaData, line, chromaGain, outputFrame);
         }
     }
-}
-
-PalColour::LineInfo::LineInfo(qint32 _number)
-    : number(_number)
-{
 }
 
 // Detect the colourburst on a line.
@@ -357,6 +382,9 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     bpo /= colourBurstLength;
     bqo /= colourBurstLength;
 
+    // Compute the colourburst amplitude from the detected signal
+    line.burstAmplitude = sqrt(bp * bp + bq * bq) * 2.0;
+
     // Detect the V-switch state on this line.
     //
     // I forget exactly why this works, but it's essentially comparing the
@@ -369,7 +397,7 @@ void PalColour::detectBurst(LineInfo &line, const quint16 *inputData)
     }
 
     // Average the burst phase to get -U (reference) phase out -- burst
-    // phase is (-U +/-V). bp and bq will be of the order of 1000.
+    // phase is (-U +/-V).
     line.bp = (bp - bqo) / 2;
     line.bq = (bq + bpo) / 2;
 

@@ -91,15 +91,16 @@ public:
 private:
     // Information about a line we're decoding.
     struct LineInfo {
-        explicit LineInfo(qint32 number);
-
         qint32 number;
         double bp, bq;
         double Vsw;
+        double burstAmplitude;
     };
 
     void buildLookUpTables();
-    void decodeField(const SourceField &inputField, const double *chromaData, double chromaGain, QByteArray &outputFrame);
+    void detectBursts(const SourceField &inputField, QVector<LineInfo> &lines);
+    void decodeField(const SourceField &inputField, const double *chromaData, const QVector<LineInfo> &lines,
+                     double chromaGain, QByteArray &outputFrame);
     void detectBurst(LineInfo &line, const quint16 *inputData);
     template <typename ChromaSample, bool PREFILTERED_CHROMA>
     void decodeLine(const SourceField &inputField, const ChromaSample *chromaData, const LineInfo &line, double chromaGain,
