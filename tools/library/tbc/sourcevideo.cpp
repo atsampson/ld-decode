@@ -207,15 +207,40 @@ QByteArray SourceVideo::getVideoField(qint32 fieldNumber, qint32 startFieldLine,
     return outputFieldLineData;
 }
 
+// Memory-map a range of consecutive fields, returning a pointer to the starting field's data.
+// The result must be unmapped with unmapVideoFields later.
+const quint16 *SourceVideo::mapVideoFields(qint32 startFieldNumber, qint32 endFieldNumber)
+{
+    // Adjust the field numbers to index from zero
+    startFieldNumber--;
+    endFieldNumber--;
 
+    // Ensure source video is open and fields are in range
+    if (!isSourceVideoOpen) qFatal("Application requested TBC field before opening TBC file - Fatal error");
+    if (startFieldNumber < 0 || startFieldNumber >= availableFields) qFatal("Application requested non-existant start TBC field");
+    if (endFieldNumber < startFieldNumber || endFieldNumber > availableFields) qFatal("Application requested non-existant end TBC field");
+    if (fieldLineLength == -1) qFatal("Application did not set field line length when opening TBC file");
 
+    // Calculate the range of file positions to map
+    qint64 requiredStartPosition = static_cast<qint64>(fieldByteLength) * static_cast<qint64>(startFieldNumber);
+    qint64 requiredLength = (static_cast<qint64>(fieldByteLength) * static_cast<qint64>(endFieldNumber)) - requiredStartPosition;
 
+    // Create the mapping
+    uchar *fieldsData = inputFile.map(requiredStartPosition, requiredLength);
+    if (fieldsData == nullptr) {
+        qFatal("Could not map memory-mapped fields");
+    }
 
+    // We return a const pointer because the file's only open for reading;
+    // modifying it would be a runtime error. This requires some additional
+    // (compile-time) gymnastics below to remove the const again when unmapping.
+    return reinterpret_cast<const quint16 *>(fieldsData);
+}
 
-
-
-
-
-
-
-
+// Unmap data previously returned by mapVideoFields.
+void SourceVideo::unmapVideoFields(const quint16 *fieldsData)
+{
+    if (!inputFile.unmap(const_cast<uchar *>(reinterpret_cast<const uchar *>(fieldsData)))) {
+        qFatal("Could not unmap memory-mapped fields");
+    }
+}

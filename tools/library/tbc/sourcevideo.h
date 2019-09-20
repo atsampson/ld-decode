@@ -46,6 +46,10 @@ public:
     QByteArray getVideoField(qint32 fieldNumber);
     QByteArray getVideoField(qint32 fieldNumber, qint32 startFieldLine, qint32 endFieldLine);
 
+    // Memory-mapped field handling methods
+    const quint16 *mapVideoFields(qint32 startFieldNumber, qint32 endFieldNumber);
+    void unmapVideoFields(const quint16 *fieldsData);
+
     // Get and set methods
     bool isSourceValid();
     qint32 getNumberOfAvailableFields();
