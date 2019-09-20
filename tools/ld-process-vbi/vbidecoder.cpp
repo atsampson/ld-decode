@@ -37,7 +37,7 @@ void VbiDecoder::run()
     qint32 fieldNumber;
 
     // Input data buffers
-    QByteArray sourceFieldData;
+    const quint16 *sourceFieldData;
     LdDecodeMetaData::Field fieldMetadata;
     LdDecodeMetaData::VideoParameters videoParameters;
 
@@ -60,14 +60,17 @@ void VbiDecoder::run()
         if (fieldMetadata.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
 
+        // Determine the active region width in samples
+        const qint32 activeWidth = videoParameters.activeVideoEnd - videoParameters.activeVideoStart;
+
         // Determine the 16-bit zero-crossing point
         qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
 
-        // Get the VBI data from the field lines (we only read field lines 10-21, so the real field line number is -9)
+        // Get the VBI data from the field lines
         qDebug() << "VbiDecoder::process(): Getting field-lines for field" << fieldNumber;
-        fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 16 - 9, videoParameters), zcPoint, videoParameters);
-        fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 17 - 9, videoParameters), zcPoint, videoParameters);
-        fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(&sourceFieldData, 18 - 9, videoParameters), zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[0] = manchesterDecoder(getActiveVideoLine(sourceFieldData, 16, videoParameters), activeWidth, zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[1] = manchesterDecoder(getActiveVideoLine(sourceFieldData, 17, videoParameters), activeWidth, zcPoint, videoParameters);
+        fieldMetadata.vbi.vbiData[2] = manchesterDecoder(getActiveVideoLine(sourceFieldData, 18, videoParameters), activeWidth, zcPoint, videoParameters);
 
         // Show the VBI data as hexadecimal (for every 1000th field)
         if (fieldNumber % 1000 == 0) {
@@ -77,13 +80,13 @@ void VbiDecoder::run()
         // Process NTSC specific data if source type is NTSC
         if (!videoParameters.isSourcePal) {
             // Get the 40-bit FM coded data from the field lines
-            fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10 - 9, videoParameters), videoParameters);
+            fmDecode = fmCode.fmDecoder(getActiveVideoLine(sourceFieldData, 10, videoParameters), activeWidth, videoParameters);
 
             // Get the white flag from the field lines
-            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11 - 9, videoParameters), videoParameters);
+            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(sourceFieldData, 11, videoParameters), activeWidth, zcPoint);
 
             // Get the closed captioning from field line 21
-            ccData = closedCaption.getData(getActiveVideoLine(&sourceFieldData, 21 - 9, videoParameters), videoParameters);
+            ccData = closedCaption.getData(getActiveVideoLine(sourceFieldData, 21, videoParameters), activeWidth, videoParameters);
 
             // Update the metadata
             if (fmDecode.receiverClockSyncBits != 0) {
@@ -113,7 +116,7 @@ void VbiDecoder::run()
         fieldMetadata.vbi.inUse = true;
 
         // Write the result to the output metadata
-        if (!decoderPool.setOutputField(fieldNumber, fieldMetadata)) {
+        if (!decoderPool.setOutputField(fieldNumber, sourceFieldData, fieldMetadata)) {
             abort = true;
             break;
         }
@@ -121,27 +124,24 @@ void VbiDecoder::run()
 }
 
 // Private method to get a single scanline of greyscale data
-QByteArray VbiDecoder::getActiveVideoLine(QByteArray *sourceField, qint32 fieldLine,
-                                        LdDecodeMetaData::VideoParameters videoParameters)
+const quint16 *VbiDecoder::getActiveVideoLine(const quint16 *sourceFieldData, qint32 fieldLine,
+                                              LdDecodeMetaData::VideoParameters videoParameters)
 {
     // Range-check the scan line
     if (fieldLine > videoParameters.fieldHeight || fieldLine < 1) {
-        qWarning() << "Cannot generate field-line data, line number is out of bounds! Scan line =" << fieldLine;
-        return QByteArray();
+        qFatal("Cannot generate field-line data, line number is out of bounds! Scan line = %d", fieldLine);
     }
 
-    qint32 startPointer = ((fieldLine - 1) * videoParameters.fieldWidth * 2) + (videoParameters.activeVideoStart * 2);
-    qint32 length = (videoParameters.activeVideoEnd - videoParameters.activeVideoStart) * 2;
-
-    return sourceField->mid(startPointer, length);
+    qint32 startPointer = ((fieldLine - 1) * videoParameters.fieldWidth) + videoParameters.activeVideoStart;
+    return sourceFieldData + startPointer;
 }
 
 // Private method to read a 24-bit biphase coded signal (manchester code) from a field line
-qint32 VbiDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
+qint32 VbiDecoder::manchesterDecoder(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint,
                                      LdDecodeMetaData::VideoParameters videoParameters)
 {
     qint32 result = 0;
-    QVector<bool> manchesterData = getTransitionMap(lineData, zcPoint);
+    QVector<bool> manchesterData = getTransitionMap(lineData, lineWidth, zcPoint);
 
     // Get the number of samples for 1.5us
     qreal fJumpSamples = (videoParameters.sampleRate / 1000000) * 1.5;
@@ -199,7 +199,7 @@ qint32 VbiDecoder::manchesterDecoder(QByteArray lineData, qint32 zcPoint,
 }
 
 // Private method to get the map of transitions across the sample and reject noise
-QVector<bool> VbiDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
+QVector<bool> VbiDecoder::getTransitionMap(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint)
 {
     // First read the data into a boolean array using debounce to remove transition noise
     bool previousState = false;
@@ -207,8 +207,8 @@ QVector<bool> VbiDecoder::getTransitionMap(QByteArray lineData, qint32 zcPoint)
     qint32 debounce = 0;
     QVector<bool> manchesterData;
 
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint += 2) {
-        qint32 pixelValue = (static_cast<uchar>(lineData[xPoint + 1]) * 256) + static_cast<uchar>(lineData[xPoint]);
+    for (qint32 xPoint = 0; xPoint < lineWidth; xPoint++) {
+        qint32 pixelValue = static_cast<qint32>(lineData[xPoint]);
         if (pixelValue > zcPoint) currentState = true; else currentState = false;
 
         if (currentState != previousState) debounce++;

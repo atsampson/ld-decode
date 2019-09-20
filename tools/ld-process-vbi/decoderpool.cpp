@@ -99,7 +99,7 @@ bool DecoderPool::process()
 //
 // Returns true if a field was returned, false if the end of the input has been
 // reached.
-bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
+bool DecoderPool::getInputField(qint32 &fieldNumber, const quint16 *&fieldVideoData,
                                 LdDecodeMetaData::Field& fieldMetadata, LdDecodeMetaData::VideoParameters& videoParameters)
 {
     QMutexLocker locker(&inputMutex);
@@ -115,24 +115,28 @@ bool DecoderPool::getInputField(qint32 &fieldNumber, QByteArray& fieldVideoData,
     // Show what we are about to process
     qDebug() << "DecoderPool::process(): Processing field number" << fieldNumber;
 
-    // Fetch the input data (we require only lines 10 to 21 from the field)
-    fieldVideoData = sourceVideo.getVideoField(fieldNumber, 10, 21);
+    // Fetch the input data
+    // XXX Map batches of fields
+    fieldVideoData = sourceVideo.mapVideoFields(fieldNumber, fieldNumber + 1);
     fieldMetadata = ldDecodeMetaData.getField(fieldNumber);
     videoParameters = ldDecodeMetaData.getVideoParameters();
 
     return true;
 }
 
-// Put a decoded frame into the output stream.
+// Update metadata for a decoded field, and unmap the field's data.
 //
 // Returns true on success, false on failure.
-bool DecoderPool::setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fieldMetadata)
+bool DecoderPool::setOutputField(qint32 fieldNumber, const quint16 *fieldVideoData, LdDecodeMetaData::Field fieldMetadata)
 {
     QMutexLocker locker(&outputMutex);
 
     // Save the field data to the metadata (only VBI and NTSC metadata is affected)
     ldDecodeMetaData.updateFieldVbi(fieldMetadata.vbi, fieldNumber);
     ldDecodeMetaData.updateFieldNtsc(fieldMetadata.ntsc, fieldNumber);
+
+    // Unmap the data
+    sourceVideo.unmapVideoFields(fieldVideoData);
 
     return true;
 }

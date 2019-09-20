@@ -36,7 +36,7 @@ class WhiteFlag : public QObject
 public:
     explicit WhiteFlag(QObject *parent = nullptr);
 
-    bool getWhiteFlag(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters);
+    bool getWhiteFlag(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint);
 
 signals:
 

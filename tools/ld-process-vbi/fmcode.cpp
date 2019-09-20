@@ -30,7 +30,7 @@ FmCode::FmCode(QObject *parent) : QObject(parent)
 }
 
 // Public method to read a 40-bit FM coded signal from a field line
-FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoParameters videoParameters)
+FmCode::FmDecode FmCode::fmDecoder(const quint16 *lineData, qint32 lineWidth, const LdDecodeMetaData::VideoParameters &videoParameters)
 {
     FmDecode fmDecode;
     fmDecode.receiverClockSyncBits = 0;
@@ -45,7 +45,7 @@ FmCode::FmDecode FmCode::fmDecoder(QByteArray lineData, LdDecodeMetaData::VideoP
     // Determine the 16-bit zero-crossing point
     qint32 zcPoint = videoParameters.white16bIre - videoParameters.black16bIre;
 
-    QVector<bool> fmData = getTransitionMap(lineData, zcPoint);
+    QVector<bool> fmData = getTransitionMap(lineData, lineWidth, zcPoint);
 
     // Get the number of samples for 0.75us
     qreal fSamples = (videoParameters.sampleRate / 1000000) * 0.75;
@@ -175,7 +175,7 @@ bool FmCode::isEvenParity(quint64 data)
 }
 
 // Private method to get the map of transitions across the sample and reject noise
-QVector<bool> FmCode::getTransitionMap(QByteArray lineData, qint32 zcPoint)
+QVector<bool> FmCode::getTransitionMap(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint)
 {
     // First read the data into a boolean array using debounce to remove transition noise
     bool previousState = false;
@@ -184,8 +184,8 @@ QVector<bool> FmCode::getTransitionMap(QByteArray lineData, qint32 zcPoint)
     QVector<bool> fmData;
 
     qint32 fmPointer = 0;
-    for (qint32 xPoint = 0; xPoint < lineData.size(); xPoint += 2) {
-        qint32 pixelValue = (static_cast<uchar>(lineData[xPoint + 1]) * 256) + static_cast<uchar>(lineData[xPoint]);
+    for (qint32 xPoint = 0; xPoint < lineWidth; xPoint++) {
+        qint32 pixelValue = static_cast<qint32>(lineData[xPoint]);
         if (pixelValue > zcPoint) currentState = true; else currentState = false;
 
         if (currentState != previousState) debounce++;

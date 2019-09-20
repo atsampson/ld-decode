@@ -47,8 +47,8 @@ public:
     bool process();
 
     // Member functions used by worker threads
-    bool getInputField(qint32& fieldNumber, QByteArray& fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
-    bool setOutputField(qint32 fieldNumber, LdDecodeMetaData::Field fieldMetadata);
+    bool getInputField(qint32& fieldNumber, const quint16 *&fieldVideoData, LdDecodeMetaData::Field &fieldMetadata, LdDecodeMetaData::VideoParameters &videoParameters);
+    bool setOutputField(qint32 fieldNumber, const quint16 *fieldVideoData, LdDecodeMetaData::Field fieldMetadata);
 
 private:
     QString inputFilename;

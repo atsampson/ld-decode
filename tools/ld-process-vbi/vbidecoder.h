@@ -54,9 +54,9 @@ private:
     // Temporary output buffer
     LdDecodeMetaData::Field outputData;
 
-    QByteArray getActiveVideoLine(QByteArray *sourceFrame, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
-    qint32 manchesterDecoder(QByteArray lineData, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
-    QVector<bool> getTransitionMap(QByteArray lineData, qint32 zcPoint);
+    const quint16 *getActiveVideoLine(const quint16 *sourceFieldData, qint32 scanLine, LdDecodeMetaData::VideoParameters videoParameters);
+    qint32 manchesterDecoder(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint, LdDecodeMetaData::VideoParameters videoParameters);
+    QVector<bool> getTransitionMap(const quint16 *lineData, qint32 lineWidth, qint32 zcPoint);
 };
 
 #endif // VBIDECODER_H
