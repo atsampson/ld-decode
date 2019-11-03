@@ -78,12 +78,14 @@ bool LdsProcess::process(QString outputFilename)
             qDebug() << "LdsProcess::process(): Performing EFM clock and data recovery...";
             efmData = pll.process(ldsData);
 
-            // Save the resulting T values as a byte stream to the output file
-            if (!outputFileHandle->write(reinterpret_cast<char *>(efmData.data()), efmData.size())) {
-                // File write failed
-                qCritical("Could not write to output file!");
-                closeOutputFile();
-                return false;
+            if (efmData.size() > 0) {
+                // Save the resulting T values as a byte stream to the output file
+                if (!outputFileHandle->write(reinterpret_cast<char *>(efmData.data()), efmData.size())) {
+                    // File write failed
+                    qCritical("Could not write to output file!");
+                    closeOutputFile();
+                    return false;
+                }
             }
         }
     } while (ldsData.size() > 0 && !finished);
