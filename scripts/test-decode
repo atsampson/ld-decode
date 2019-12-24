@@ -60,6 +60,21 @@ def run_command(cmd, **kwopts):
     if rc != 0:
         die(cmd[0], 'failed with exit code', rc)
 
+def check_pcm_samples(pcm_file, expect_samples):
+    """If expect_samples is not None, check that pcm_file contains at least
+    expect_samples pairs of 16-bit samples."""
+
+    if dry_run or (expect_samples is None):
+        return
+
+    if not os.path.exists(pcm_file):
+        die(pcm_file, 'does not exist')
+
+    pcm_samples = os.stat(pcm_file).st_size // (2 * 2)
+    if pcm_samples < expect_samples:
+        die(pcm_file, 'contains', pcm_samples,
+            'samples; expected at least', expect_samples)
+
 def run_ld_decode(args):
     """Run ld-decode."""
 
@@ -75,6 +90,8 @@ def run_ld_decode(args):
     env = os.environ.copy()
     env['PATH'] = src_dir + ':' + env['PATH']
     run_command(cmd, env=env)
+
+    check_pcm_samples(args.output + '.pcm', args.expect_audio_samples)
 
 def run_ld_process_vbi(args):
     """Run ld-process-vbi."""
@@ -118,6 +135,24 @@ def run_ld_process_vbi(args):
             die(json_file, 'did not contain a field with VBI values',
                 args.expect_vbi)
 
+def run_cx_expander(args):
+    """Run cx-expander."""
+
+    if args.no_cx:
+        return
+
+    clean(args, ['.cx.pcm'])
+    pcm_file = args.output + '.pcm'
+    cx_file = args.output + '.cx.pcm'
+
+    cmd = [src_dir + '/cx-expander.py']
+    # XXX dryrun - would be easier if cx-expander had options
+    with open(pcm_file, 'rb') as fin:
+        with open(cx_file, 'wb') as fout:
+            run_command(cmd, stdin=fin, stdout=fout)
+
+    check_pcm_samples(cx_file, args.expect_audio_samples)
+
 def run_ld_process_efm(args):
     """Run ld-process-efm."""
 
@@ -142,14 +177,7 @@ def run_ld_process_efm(args):
     cmd += ['--noninteractive', efm_file, pcm_file]
     run_command(cmd)
 
-    # Check there are enough output samples
-    if (args.expect_efm_samples is not None) and (not dry_run):
-        if not os.path.exists(pcm_file):
-            die(pcm_file, 'does not exist')
-        pcm_samples = os.stat(pcm_file).st_size // (2 * 2)
-        if pcm_samples < args.expect_efm_samples:
-            die(pcm_file, 'contains', pcm_samples,
-                'samples; expected at least', args.expect_efm_samples)
+    check_pcm_samples(pcm_file, args.expect_efm_samples)
 
 def run_ld_dropout_correct(args):
     """Run ld-dropout-correct."""
@@ -205,6 +233,8 @@ def main():
                        help='source is PAL (default NTSC)')
     group.add_argument('--no-efm', action='store_true', dest='no_efm',
                        help='source has no EFM')
+    group.add_argument('--cx', action='store_false', dest='no_cx', default=True,
+                       help='source has CX-encoded analogue audio')
     group.add_argument('--decoder', metavar='decoder', action='append',
                        dest='decoders', default=[],
                        help='use specific ld-chroma-decoder decoder (use more than once to test multiple decoders)')
@@ -215,6 +245,8 @@ def main():
                        help='expect median bPSNR of at least DB')
     group.add_argument('--expect-vbi', metavar='N,N,N', type=parse_vbi_arg,
                        help='expect at least one field with VBI values N,N,N')
+    group.add_argument('--expect-audio-samples', metavar='N', type=int,
+                       help='expect at least N stereo pairs of analogue audio samples')
     group.add_argument('--expect-efm-samples', metavar='N', type=int,
                        help='expect at least N stereo pairs of samples in EFM output')
     args = parser.parse_args()
@@ -244,6 +276,7 @@ def main():
     # Run the stages of the decoding toolchain
     run_ld_decode(args)
     run_ld_process_vbi(args)
+    run_cx_expander(args)
     run_ld_process_efm(args)
     run_ld_dropout_correct(args)
     for decoder in args.decoders:
