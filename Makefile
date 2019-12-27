@@ -19,10 +19,12 @@ QMAKE ?= qmake
 ### Targets for users to invoke ###
 
 all: build-helpers build-python build-tools
+check: check-python check-tools
 install: install-helpers install-python install-tools
 clean: clean-helpers clean-python clean-tools
 
 .PHONY: all build-helpers build-python build-tools
+.PHONY: check check-python check-tools
 .PHONY: install install-helpers install-python install-tools
 .PHONY: clean clean-helpers clean-python clean-tools
 
@@ -47,6 +49,44 @@ clean-helpers:
 build-python:
 	$(PYTHON3) setup.py build
 
+check-python:
+	@if [ ! -f testdata/ve-snw-cut.lds ]; then \
+		echo "You must git clone ld-decode-testdata into 'testdata'"; \
+		exit 1; \
+	fi
+
+	@echo ">>> Decoding NTSC CAV"
+	scripts/test-decode \
+		--decoder mono --decoder ntsc2d --decoder ntsc3d \
+		--expect-frames 29 \
+		--expect-bpsnr 43.3 \
+		--expect-vbi 9151563,15925840,15925840 \
+		--expect-efm-samples 40572 \
+		testdata/ve-snw-cut.lds
+
+	@echo ">>> Decoding NTSC CLV"
+	scripts/test-decode \
+		--expect-frames 4 \
+		--expect-bpsnr 37.6 \
+		--expect-vbi 9167913,15785241,15785241 \
+		testdata/issues/176/issue176.lds
+
+	@echo ">>> Decoding PAL CAV"
+	scripts/test-decode --pal \
+		--decoder mono --decoder pal2d --decoder transform2d --decoder transform3d \
+		--expect-frames 4 \
+		--expect-bpsnr 40.6 \
+		--expect-vbi 9151527,16065688,16065688 \
+		--expect-efm-samples 5292 \
+		testdata/pal/jason-testpattern.lds
+
+	@echo ">>> Decoding PAL CLV"
+	scripts/test-decode --pal --no-efm \
+		--expect-frames 9 \
+		--expect-bpsnr 31.8 \
+		--expect-vbi 0,8449774,8449774 \
+		testdata/pal/kagemusha-leadout-cbar.ldf
+
 install-python:
 	if [ -z "$(DESTDIR)" ]; then \
 		$(PYTHON3) setup.py install --prefix="$(prefix)"; \
@@ -62,6 +102,9 @@ clean-python:
 build-tools:
 	cd tools && $(QMAKE) -recursive PREFIX="$(prefix)"
 	$(MAKE) -C tools
+
+check-tools:
+	tools/library/filter/testfilter/testfilter
 
 install-tools:
 	$(MAKE) -C tools install INSTALL_ROOT="$(DESTDIR)"
