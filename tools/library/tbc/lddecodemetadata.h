@@ -25,6 +25,7 @@
 #ifndef LDDECODEMETADATA_H
 #define LDDECODEMETADATA_H
 
+#include <QByteArray>
 #include <QVector>
 #include <QTemporaryFile>
 #include <QDebug>
@@ -97,6 +98,14 @@ public:
         qint32 ccData1;
     };
 
+    // Sliced VBI data line definition
+    // This is equivalent to ZVBI's struct vbi_sliced.
+    struct SlicedVbi {
+        quint32 id;
+        quint32 line;
+        QByteArray data;
+    };
+
     // PCM sound metadata definition
     struct PcmAudioParameters {
         qint32 sampleRate;
@@ -120,6 +129,7 @@ public:
         VitsMetrics vitsMetrics;
         Vbi vbi;
         Ntsc ntsc;
+        QVector<SlicedVbi> slicedVbi;
         DropOuts dropOuts;
         bool pad;
     };
@@ -158,6 +168,7 @@ public:
     VitsMetrics getFieldVitsMetrics(qint32 sequentialFieldNumber);
     Vbi getFieldVbi(qint32 sequentialFieldNumber);
     Ntsc getFieldNtsc(qint32 sequentialFieldNumber);
+    QVector<SlicedVbi> getFieldSlicedVbi(qint32 sequentialFieldNumber);
     DropOuts getFieldDropOuts(qint32 sequentialFieldNumber);
 
     // Set field metadata
@@ -165,6 +176,7 @@ public:
     void updateFieldVitsMetrics(LdDecodeMetaData::VitsMetrics _vitsMetrics, qint32 sequentialFieldNumber);
     void updateFieldVbi(LdDecodeMetaData::Vbi _vbi, qint32 sequentialFieldNumber);
     void updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequentialFieldNumber);
+    void updateFieldSlicedVbi(QVector<LdDecodeMetaData::SlicedVbi> _slicedVbi, qint32 sequentialFieldNumber);
     void updateFieldDropOuts(LdDecodeMetaData::DropOuts _dropOuts, qint32 sequentialFieldNumber);
     void clearFieldDropOuts(qint32 sequentialFieldNumber);
 

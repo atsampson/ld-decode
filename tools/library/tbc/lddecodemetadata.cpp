@@ -172,6 +172,9 @@ LdDecodeMetaData::Field LdDecodeMetaData::getField(qint32 sequentialFieldNumber)
     // NTSC values
     field.ntsc = getFieldNtsc(sequentialFieldNumber);
 
+    // Sliced VBI lines
+    field.slicedVbi = getFieldSlicedVbi(sequentialFieldNumber);
+
     // dropOuts values
     field.dropOuts = getFieldDropOuts(sequentialFieldNumber);
 
@@ -259,6 +262,32 @@ LdDecodeMetaData::Ntsc LdDecodeMetaData::getFieldNtsc(qint32 sequentialFieldNumb
     return ntsc;
 }
 
+// This method gets the sliced VBI lines for the specified sequential field number
+QVector<LdDecodeMetaData::SlicedVbi> LdDecodeMetaData::getFieldSlicedVbi(qint32 sequentialFieldNumber)
+{
+    QVector<LdDecodeMetaData::SlicedVbi> slicedVbi;
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::getFieldSlicedVbi(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    qint32 slicedVbiSize = json.size({"fields", fieldNumber, "slicedVbi"});
+    if (slicedVbiSize > 0) {
+        slicedVbi.resize(slicedVbiSize);
+
+        for (qint32 i = 0; i < slicedVbiSize; i++) {
+            slicedVbi[i].id = json.value({"fields", fieldNumber, "slicedVbi", i, "id"}).toUInt();
+            slicedVbi[i].line = json.value({"fields", fieldNumber, "slicedVbi", i, "line"}).toUInt();
+            slicedVbi[i].data = QByteArray::fromBase64(json.value({"fields", fieldNumber, "slicedVbi", i, "data"}).toString().toUtf8());
+        }
+    } else {
+        slicedVbi.clear();
+    }
+
+    return slicedVbi;
+}
+
 // This method gets the drop-out metadata for the specified sequential field number
 LdDecodeMetaData::DropOuts LdDecodeMetaData::getFieldDropOuts(qint32 sequentialFieldNumber)
 {
@@ -323,6 +352,9 @@ void LdDecodeMetaData::updateField(LdDecodeMetaData::Field _field, qint32 sequen
 
     // Write the NTSC specific record if in use
     updateFieldNtsc(_field.ntsc, sequentialFieldNumber);
+
+    // Write the sliced VBI
+    updateFieldSlicedVbi(_field.slicedVbi, sequentialFieldNumber);
 
     // Write the drop-out records
     updateFieldDropOuts(_field.dropOuts, sequentialFieldNumber);
@@ -389,6 +421,27 @@ void LdDecodeMetaData::updateFieldNtsc(LdDecodeMetaData::Ntsc _ntsc, qint32 sequ
         json.setValue({"fields", fieldNumber, "ntsc", "whiteFlag"}, _ntsc.whiteFlag);
         json.setValue({"fields", fieldNumber, "ntsc", "ccData0"}, _ntsc.ccData0);
         json.setValue({"fields", fieldNumber, "ntsc", "ccData1"}, _ntsc.ccData1);
+    }
+}
+
+// This method sets the sliced VBI lines for a field
+void LdDecodeMetaData::updateFieldSlicedVbi(QVector<LdDecodeMetaData::SlicedVbi> _slicedVbi, qint32 sequentialFieldNumber)
+{
+    qint32 fieldNumber = sequentialFieldNumber - 1;
+
+    if (fieldNumber >= getNumberOfFields() + 1 || fieldNumber < 0) {
+        qCritical() << "LdDecodeMetaData::updateFieldSlicedVbi(): Requested field number" << sequentialFieldNumber << "out of bounds!";
+    }
+
+    if (_slicedVbi.empty()) {
+        json.remove({"fields", fieldNumber, "slicedVbi"});
+    } else {
+        json.setEmptyArray({"fields", fieldNumber, "slicedVbi"});
+        for (qint32 i = 0; i < _slicedVbi.size(); i++) {
+            json.setValue({"fields", fieldNumber, "slicedVbi", i, "id"}, _slicedVbi[i].id);
+            json.setValue({"fields", fieldNumber, "slicedVbi", i, "line"}, _slicedVbi[i].line);
+            json.setValue({"fields", fieldNumber, "slicedVbi", i, "data"}, QString::fromUtf8(_slicedVbi[i].data.toBase64()));
+        }
     }
 }
 
