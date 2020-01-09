@@ -29,6 +29,7 @@
 
 #include "csv.h"
 #include "ffmetadata.h"
+#include "zvbi.h"
 
 #include "lddecodemetadata.h"
 
@@ -129,6 +130,16 @@ int main(int argc, char *argv[])
                                              QCoreApplication::translate("main", "file"));
     parser.addOption(writeFfmetadataOption);
 
+    QCommandLineOption writeZvbiSlicedOption("zvbi-sliced",
+                                             QCoreApplication::translate("main", "Write Teletext/CC data in ZVBI sliced format"),
+                                             QCoreApplication::translate("main", "file"));
+    parser.addOption(writeZvbiSlicedOption);
+
+    QCommandLineOption writeT42Option("t42",
+                                      QCoreApplication::translate("main", "Write Teletext data in T42 format"),
+                                      QCoreApplication::translate("main", "file"));
+    parser.addOption(writeT42Option);
+
     // -- Positional arguments --
 
     // Positional argument to specify input video file
@@ -176,6 +187,20 @@ int main(int argc, char *argv[])
     if (parser.isSet(writeFfmetadataOption)) {
         const QString &fileName = parser.value(writeFfmetadataOption);
         if (!writeFfmetadata(metaData, fileName)) {
+            qCritical() << "Failed to write output file:" << fileName;
+            return 1;
+        }
+    }
+    if (parser.isSet(writeZvbiSlicedOption)) {
+        const QString &fileName = parser.value(writeZvbiSlicedOption);
+        if (!writeZvbiSliced(metaData, fileName)) {
+            qCritical() << "Failed to write output file:" << fileName;
+            return 1;
+        }
+    }
+    if (parser.isSet(writeT42Option)) {
+        const QString &fileName = parser.value(writeT42Option);
+        if (!writeT42(metaData, fileName)) {
             qCritical() << "Failed to write output file:" << fileName;
             return 1;
         }

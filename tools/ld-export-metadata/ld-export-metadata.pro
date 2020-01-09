@@ -18,12 +18,14 @@ SOURCES += \
     csv.cpp \
     ffmetadata.cpp \
     main.cpp \
+    zvbi.cpp \
     ../library/tbc/lddecodemetadata.cpp \
     ../library/tbc/vbidecoder.cpp
 
 HEADERS += \
     csv.h \
     ffmetadata.h \
+    zvbi.h \
     ../library/tbc/lddecodemetadata.h \
     ../library/tbc/vbidecoder.h
 
