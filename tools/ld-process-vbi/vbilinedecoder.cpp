@@ -23,7 +23,9 @@
 ************************************************************************/
 
 #include "vbilinedecoder.h"
+
 #include "decoderpool.h"
+#include "zvbidecoder.h"
 
 // Definitions of static constexpr data members, for compatibility with
 // pre-C++17 compilers
@@ -46,6 +48,11 @@ void VbiLineDecoder::run()
     LdDecodeMetaData::Field fieldMetadata;
     LdDecodeMetaData::VideoParameters videoParameters;
 
+    // Decoders
+    FmCode fmCode;
+    WhiteFlag whiteFlag;
+    ClosedCaption closedCaption;
+    ZvbiDecoder zvbi;
 
     while(!abort) {
         // Get the next field to process from the input file
@@ -53,15 +60,6 @@ void VbiLineDecoder::run()
             // No more input fields -- exit
             break;
         }
-
-        FmCode fmCode;
-        FmCode::FmDecode fmDecode;
-
-        bool isWhiteFlag = false;
-        WhiteFlag whiteFlag;
-
-        ClosedCaption closedCaption;
-        ClosedCaption::CcData ccData;
 
         if (fieldMetadata.isFirstField) qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(first)";
         else  qDebug() << "VbiDecoder::process(): Getting metadata for field" << fieldNumber << "(second)";
@@ -85,13 +83,13 @@ void VbiLineDecoder::run()
         // Process NTSC specific data if source type is NTSC
         if (!videoParameters.isSourcePal) {
             // Get the 40-bit FM coded data from field line 10
-            fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters);
+            FmCode::FmDecode fmDecode = fmCode.fmDecoder(getActiveVideoLine(&sourceFieldData, 10 - startFieldLine, videoParameters), videoParameters);
 
             // Get the white flag from field line 11
-            isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters);
+            bool isWhiteFlag = whiteFlag.getWhiteFlag(getActiveVideoLine(&sourceFieldData, 11 - startFieldLine, videoParameters), videoParameters);
 
             // Get the closed captioning from field line 21
-            ccData = closedCaption.getData(getActiveVideoLine(&sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters);
+            ClosedCaption::CcData ccData = closedCaption.getData(getActiveVideoLine(&sourceFieldData, 21 - startFieldLine, videoParameters), videoParameters);
 
             // Update the metadata
             if (fmDecode.receiverClockSyncBits != 0) {
@@ -116,6 +114,9 @@ void VbiLineDecoder::run()
                 fieldMetadata.ntsc.ccData1 = -1;
             }
         }
+
+        // Process field with ZVBI
+        zvbi.process(sourceFieldData, fieldMetadata, videoParameters);
 
         // Update the metadata for the field
         fieldMetadata.vbi.inUse = true;
