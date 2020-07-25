@@ -108,13 +108,13 @@ private:
 
     void filterIQ(YiqBuffer &yiqBuffer);
     void splitIQ(FrameBuffer *frameBuffer);
+    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 
     void doCNR(YiqBuffer &yiqBuffer);
     void doYNR(YiqBuffer &yiqBuffer);
 
     RGBFrame yiqToRgbFrame(const YiqBuffer &yiqBuffer);
     void overlayOpticalFlowMap(const FrameBuffer &frameBuffer, RGBFrame &rgbOutputFrame);
-    void adjustY(FrameBuffer *frameBuffer, YiqBuffer &yiqBuffer);
 };
 
 #endif // COMB_H
