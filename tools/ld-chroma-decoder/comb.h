@@ -90,6 +90,7 @@ private:
 
         void split1D();
         void split2D();
+        void compare3D(const FrameBuffer &previousFrame);
         void split3D(const FrameBuffer &previousFrame);
 
         void filterIQ();
@@ -127,11 +128,12 @@ private:
         // Demodulated YIQ samples
         YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
 
-        // Motion detection result, from 0 (none) to 1 (lots)
-        QVector<double> kValues;
+        // Luma difference from previous frame at each sample
+        double difference[MAX_HEIGHT][MAX_WIDTH];
 
         inline qint32 getFieldID(qint32 lineNumber);
         inline bool getLinePhase(qint32 lineNumber);
+        double getKValue(qint32 lineNumber, qint32 h);
     };
 };
 

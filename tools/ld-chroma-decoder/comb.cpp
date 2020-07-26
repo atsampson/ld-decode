@@ -100,42 +100,22 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Load fields into the buffer
         currentFrameBuffer->loadFields(inputFields[fieldIndex], inputFields[fieldIndex + 1]);
 
-        if (fieldIndex < startIndex) {
-            // This is a look-behind frame; no further decoding needed.
-            continue;
-        }
-
         // Extract chroma using 1D filter
         currentFrameBuffer->split1D();
 
         // Extract chroma using 2D filter
         currentFrameBuffer->split2D();
 
+        if (fieldIndex < startIndex) {
+            // This is a look-behind frame; no further decoding needed.
+            continue;
+        }
+
         if (configuration.dimensions == 3) {
             // 3D comb filter processing
 
-#if 1
-            // XXX - At present we don't have an implementation of motion detection,
-            // which makes this a non-adaptive 3D decoder: it'll give good results
-            // for still images but garbage for moving images.
-#else
-            // With motion detection, it would look like this...
-
-            // Demodulate chroma giving I/Q
-            currentFrameBuffer->splitIQ();
-
-            // Extract Y from baseband and I/Q
-            currentFrameBuffer->adjustY();
-
-            // Post-filter I/Q
-            if (configuration.colorlpf) currentFrameBuffer->filterIQ();
-
-            // Apply noise reduction
-            currentFrameBuffer->doYNR();
-            currentFrameBuffer->doCNR();
-
-            opticalFlow.denseOpticalFlow(currentFrameBuffer->yiqBuffer, currentFrameBuffer->kValues);
-#endif
+            // Measure luma differences from previous frame
+            currentFrameBuffer->compare3D(*previousFrameBuffer);
 
             // Extract chroma using 3D filter
             currentFrameBuffer->split3D(*previousFrameBuffer);
@@ -173,10 +153,6 @@ Comb::FrameBuffer::FrameBuffer(const LdDecodeMetaData::VideoParameters &videoPar
 
     // Set the IRE scale
     irescale = (videoParameters.white16bIre - videoParameters.black16bIre) / 100;
-
-    // Allocate kValues and fill with 0 (no motion detected yet)
-    kValues.resize(MAX_WIDTH * MAX_HEIGHT);
-    kValues.fill(0.0);
 }
 
 /* 
@@ -332,6 +308,36 @@ void Comb::FrameBuffer::split2D()
     }
 }
 
+// Measure (approximately) how different the luma is from the previous frame,
+// for use later when estimating motion in the adaptive 3D filter.
+void Comb::FrameBuffer::compare3D(const FrameBuffer &previousFrame)
+{
+    for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
+        const quint16 *currentLine = rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+        const quint16 *previousLine = previousFrame.rawbuffer.data() + (lineNumber * videoParameters.fieldWidth);
+
+        for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
+            // XXX Is 1D or 2D better? (Maybe try adding the 1D fallback to the 2D code...)
+#if 0
+            // Get the chroma signal extracted by the 2D filter
+            const double currentChroma = -clpbuffer[1].pixel[lineNumber][h];
+            const double previousChroma = -previousFrame.clpbuffer[1].pixel[lineNumber][h];
+#else
+            // Get the chroma signal extracted by the 1D filter
+            const double currentChroma = -clpbuffer[0].pixel[lineNumber][h] / 2;
+            const double previousChroma = -previousFrame.clpbuffer[0].pixel[lineNumber][h] / 2;
+#endif
+
+            // Subtract it from the original signal to get the luma
+            const double currentLuma = currentLine[h] - currentChroma;
+            const double previousLuma = previousLine[h] - previousChroma;
+
+            // Compute difference in IRE
+            difference[lineNumber][h] = fabs(currentLuma - previousLuma) / irescale;
+        }
+    }
+}
+
 // Extract chroma into clpbuffer[2] using a 3D filter.
 //
 // This is like the 2D filtering above, except now we're looking at the
@@ -399,7 +405,7 @@ void Comb::FrameBuffer::splitIQ()
             default:
                 if (configuration.adaptive) {
                     // Compute a weighted sum of the 2D and 3D chroma values
-                    const double kValue = kValues[(lineNumber * MAX_WIDTH) + h];
+                    const double kValue = getKValue(lineNumber, h);
                     cavg  = clpbuffer[1].pixel[lineNumber][h] * kValue; // 2D mix
                     cavg += clpbuffer[2].pixel[lineNumber][h] * (1 - kValue); // 3D mix
                 } else {
@@ -424,6 +430,34 @@ void Comb::FrameBuffer::splitIQ()
             yiqBuffer[lineNumber][h].q = sq;
         }
     }
+}
+
+// Decide what blend of the 2D and 3D results to use for a sample.
+// 0 means only 3D, 1 means only 2D.
+double Comb::FrameBuffer::getKValue(qint32 lineNumber, qint32 h)
+{
+    static constexpr qint32 RADIUS = 3;
+    static constexpr qint32 NUM_SUMMED = ((RADIUS * 2) + 1) * ((RADIUS * 2) + 1);
+
+    // Ignore differences of less than CORING IRE
+    static constexpr double CORING = 5;
+    // Divide the total by DIVISOR to get the result
+    static constexpr double DIVISOR = (NUM_SUMMED * 100) * 0.1;
+
+    // Sum the luma difference values for a rectangle that extends RADIUS
+    // samples outwards from the current sample within the same field
+    double total = 0;
+    for (qint32 y = lineNumber - (2 * RADIUS); y < lineNumber + (2 * RADIUS) + 2; y += 2) {
+        if (y < videoParameters.firstActiveFrameLine || y >= videoParameters.lastActiveFrameLine) continue;
+        for (qint32 x = h - RADIUS; x < h + RADIUS + 1; x++) {
+            if (difference[y][x] >= CORING) {
+                total += difference[y][x];
+            }
+        }
+    }
+
+    // Compute the result and limit to range 0-1
+    return qBound(0.0, total / DIVISOR, 1.0);
 }
 
 // Filter the IQ from the input YIQ buffer
@@ -612,11 +646,15 @@ void Comb::FrameBuffer::overlayMap(RGBFrame &rgbFrame)
 
         // Fill the output frame with the RGB values
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
-            qint32 intensity = static_cast<qint32>(kValues[(lineNumber * MAX_WIDTH) + h] * 65535);
+            qint32 intensity = static_cast<qint32>(getKValue(lineNumber, h) * 65535);
+
             // Make the RGB more purple to show where motion was detected
             qint32 red = linePointer[(h * 3)] + intensity;
             qint32 green = linePointer[(h * 3) + 1];
             qint32 blue = linePointer[(h * 3) + 2] + intensity;
+#if 0
+            red = green = blue = 20000 + (intensity / 2); // XXX
+#endif
 
             if (red > 65535) red = 65535;
             if (green > 65535) green = 65535;
