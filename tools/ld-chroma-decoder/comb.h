@@ -90,7 +90,7 @@ private:
 
         void split1D();
         void split2D();
-        void split3D(const FrameBuffer &previousFrame);
+        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
 
         void splitIQ();
         void filterIQ();
@@ -124,14 +124,24 @@ private:
             double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 
+        // Approximate luma samples for similarity detection
+        double luma[MAX_HEIGHT][MAX_WIDTH];
+
+        struct Candidate {
+            double penalty;
+            double sample;
+            quint32 shade; // XXX This is ugly -- have a type enum?
+        };
+        quint32 shades[MAX_HEIGHT][MAX_WIDTH];
+
         // Demodulated YIQ samples
         YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
 
-        // Motion detection result, from 0 (none) to 1 (lots)
-        QVector<double> kValues;
-
         inline qint32 getFieldID(qint32 lineNumber) const;
         inline bool getLinePhase(qint32 lineNumber) const;
+        Candidate getCandidate(qint32 refLineNumber, qint32 refH,
+                               const FrameBuffer &frameBuffer, qint32 lineNumber, qint32 h,
+                               quint32 shade, double adjustPenalty);
     };
 };
 
