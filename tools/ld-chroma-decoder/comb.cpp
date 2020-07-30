@@ -350,9 +350,12 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
             const double FRAME_BONUS = FIELD_BONUS - 2.0;
 
 #if 1
-            // Same line, 2 samples left and right
-            candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0xff8080, 0);
-            candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h + 2, 0xff8080, 0);
+            // Don't use 1D on the first pass, since it often produces spurious colour
+            if (!force2D) {
+                // Same line, 2 samples left and right
+                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0xff8080, 0);
+                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h + 2, 0xff8080, 0);
+            }
 #endif
 
 #if 1
@@ -361,6 +364,7 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
             candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber - 2, h, 0x80ff80, LINE_BONUS);
             candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber + 2, h, 0x80ff80, LINE_BONUS);
 #endif
+            const qint32 first3D = num;
 
             // If the next/previous field are available...
             if (!force2D) {
@@ -388,21 +392,11 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
                 if (candidates[i].penalty < candidates[best].penalty) best = i;
             }
 
-#if 0
-            // XXX This looks better turned off - and doesn't produce the same result as split1D!
-            // If using a 1D candidate, make sure we use both of them (i.e. produce the same result as split1D).
-            // Using just one doesn't look very good.
-            if (best < 2) {
-                candidates[0].penalty = qMin(candidates[0].penalty, candidates[1].penalty);
-                candidates[1].penalty = candidates[0].penalty;
-            }
-#endif
-
             // If there are several candidates of the same type that are about equally good, use the mean of all of them
             static constexpr double MERGE_LIMIT = 2.0;
             double candidateSample = 0.0;
             qint32 numGood = 0;
-            if (best >= 4) {
+            if (best >= first3D) {
                 // but only for 2D...
                 candidateSample = candidates[best].sample;
                 numGood = 1;
@@ -460,6 +454,8 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     }
 #endif
 
+    // ... and chroma
+    // XXX Maybe do this based on hue/saturation difference rather than I/Q?
     double iqPenalty = 0.0;
 #if 1
 if (configuration.adaptive) {
@@ -473,7 +469,7 @@ if (configuration.adaptive) {
         iqPenalty += fabs(refQ - candidateQ);
     }
     // Weaken this relative to luma, to avoid spurious colour in the 2D result from showing through
-    iqPenalty *= 0.2;
+    iqPenalty *= 0.3;
 }
 #endif
 
