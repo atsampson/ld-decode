@@ -444,6 +444,15 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
         return result;
     }
 
+    // The target sample should have 180 degrees phase difference from the reference.
+    // If it doesn't (e.g. because it's a blank frame or the player skipped), it's not viable.
+    const qint32 wantPhase = (2 + (getLinePhase(refLineNumber) ? 2 : 0) + refH) % 4;
+    const qint32 havePhase = ((frameBuffer.getLinePhase(lineNumber) ? 2 : 0) + h) % 4;
+    if (wantPhase != havePhase) {
+        result.penalty = 1000.0;
+        return result;
+    }
+
     // Penalty is based on mean difference in IRE over surrounding three luma samples
     double yPenalty = 0.0;
 #if 1
