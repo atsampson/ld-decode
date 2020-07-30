@@ -107,12 +107,14 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
 
 #if 1
         // Extract chroma using 3D filter with only 2D sources
+if (configuration.adaptive) {
+        nextFrameBuffer->split2D();
+} else {
         nextFrameBuffer->split3D(*nextFrameBuffer, *nextFrameBuffer, true); // XXX ugly!
+}
         nextFrameBuffer->splitIQ(true);
         nextFrameBuffer->adjustY(true);
 #endif
-        // XXX Try this with split2D now...
-        // XXX ... and try falling back to split2D
 
         // XXX Maybe only look at chroma for low-detail areas, or something...
 
@@ -426,6 +428,11 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
             // This sample is Y + C; the candidate is (ideally) Y - C. So compute C as ((Y + C) - (Y - C)) / 2.
             chromaBuffer.pixel[lineNumber][h] = ((clpbuffer[0].pixel[lineNumber][h] / 2) - candidateSample) / 2;
             shades[lineNumber][h] = candidates[best].shade;
+
+            if (configuration.adaptive && best < first3D) {
+                // Use the split2D result
+                chromaBuffer.pixel[lineNumber][h] = clpbuffer[1].pixel[lineNumber][h];
+            }
         }
     }
 }
@@ -467,7 +474,6 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     // XXX Maybe do this based on hue/saturation difference rather than I/Q?
     double iqPenalty = 0.0;
 #if 1
-if (configuration.adaptive) {
     for (qint32 offset = -1; offset < 2; offset++) {
         const double refI = similarityBuffer[refLineNumber][refH + offset].i;
         const double candidateI = frameBuffer.similarityBuffer[lineNumber][h + offset].i;
@@ -479,7 +485,6 @@ if (configuration.adaptive) {
     }
     // Weaken this relative to luma, to avoid spurious colour in the 2D result from showing through
     iqPenalty *= 0.3;
-}
 #endif
 
     result.penalty = (yPenalty / 3 / irescale) + (iqPenalty / 6 / irescale) + adjustPenalty;
