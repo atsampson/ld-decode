@@ -90,7 +90,7 @@ private:
 
         void split1D();
         void split2D();
-        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, bool force2D);
+        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
 
         void splitIQ(bool force2D);
         void filterIQ();
@@ -131,13 +131,11 @@ private:
         };
         quint32 shades[MAX_HEIGHT][MAX_WIDTH];
 
-        typedef YIQ YIQBuffer[MAX_HEIGHT][MAX_WIDTH];
-
         // Approximate YIQ samples for similarity detection
-        YIQBuffer similarityBuffer;
+        YIQ similarityBuffer[MAX_HEIGHT][MAX_WIDTH];
 
         // Demodulated YIQ samples
-        YIQBuffer yiqBuffer;
+        YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
 
         inline qint32 getFieldID(qint32 lineNumber) const;
         inline bool getLinePhase(qint32 lineNumber) const;

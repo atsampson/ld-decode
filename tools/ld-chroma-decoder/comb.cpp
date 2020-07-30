@@ -105,30 +105,25 @@ void Comb::decodeFrames(const QVector<SourceField> &inputFields, qint32 startInd
         // Extract chroma using 1D filter
         nextFrameBuffer->split1D();
 
-#if 1
-        // Extract chroma using 3D filter with only 2D sources
-if (configuration.adaptive) {
+        // Extract chroma using 2D filter
         nextFrameBuffer->split2D();
-} else {
-        nextFrameBuffer->split3D(*nextFrameBuffer, *nextFrameBuffer, true); // XXX ugly!
-}
-        nextFrameBuffer->splitIQ(true);
-        nextFrameBuffer->adjustY(true);
-#endif
 
-        // XXX Maybe only look at chroma for low-detail areas, or something...
+        if (configuration.dimensions == 3) {
+            // Demodulate 2D chroma giving I/Q, for similarity measurement
+            nextFrameBuffer->splitIQ(true);
+
+            // Extract Y for similarity measurement
+            nextFrameBuffer->adjustY(true);
+        }
 
         if (fieldIndex < startIndex) {
             // This is a look-behind frame; no further decoding needed.
             continue;
         }
 
-        if (configuration.dimensions == 2) {
-            // Extract chroma using 2D filter
-            currentFrameBuffer->split2D();
-        } else if (configuration.dimensions == 3) {
+        if (configuration.dimensions == 3) {
             // Extract chroma using 3D filter
-            currentFrameBuffer->split3D(*previousFrameBuffer, *nextFrameBuffer, false);
+            currentFrameBuffer->split3D(*previousFrameBuffer, *nextFrameBuffer);
         }
 
         // Demodulate chroma giving I/Q
@@ -235,9 +230,6 @@ void Comb::FrameBuffer::split1D()
 
             // Record the 1D C value
             clpbuffer[0].pixel[lineNumber][h] = tc1;
-
-            // Compute luma based on this
-            similarityBuffer[lineNumber][h] = YIQ(line[h] + (tc1 / 2), 0, 0);
         }
     }
 }
@@ -331,14 +323,16 @@ void Comb::FrameBuffer::split2D()
 // Extract chroma into clpbuffer[2] using an adaptive 3D filter.
 //
 // XXX write something about how this works
-// XXX The adjustPenalty values -- having a little bit of bias towards using
-// another line/frame produces a visibly less noisy picture -- but the bias
-// needs to be pretty small
-void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, bool force2D)
+void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame)
 {
     Candidate candidates[8];
 
-    auto& chromaBuffer = clpbuffer[force2D ? 1 : 2];
+    // XXX The adjustPenalty values -- having a little bit of bias towards using
+    // another line/frame produces a visibly less noisy picture -- but the bias
+    // needs to be pretty small
+    static constexpr double LINE_BONUS = -2.0;
+    static constexpr double FIELD_BONUS = LINE_BONUS - 2.0;
+    static constexpr double FRAME_BONUS = FIELD_BONUS - 2.0;
 
     for (qint32 lineNumber = videoParameters.firstActiveFrameLine; lineNumber < videoParameters.lastActiveFrameLine; lineNumber++) {
         for (qint32 h = videoParameters.activeVideoStart; h < videoParameters.activeVideoEnd; h++) {
@@ -346,47 +340,28 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
 
             // Look at nearby positions that have a 180 degree chroma phase difference from this sample.
 
-            // XXX static constexpr
-            const double LINE_BONUS = -2.0;
-            const double FIELD_BONUS = LINE_BONUS - 2.0;
-            const double FRAME_BONUS = FIELD_BONUS - 2.0;
+            // 1D: Same line, 2 samples left and right
+            candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0xff8080, 0);
+            candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h + 2, 0xff8080, 0);
 
-#if 1
-            // Don't use 1D on the first pass, since it often produces spurious colour
-            if (!force2D) {
-                // Same line, 2 samples left and right
-                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h - 2, 0xff8080, 0);
-                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber, h + 2, 0xff8080, 0);
-            }
-#endif
-
-#if 1
-            // Same field, 1 line up and down
-            // XXX This is not as good as the existing 2D mode in some ways (and better in others!)
+            // 2D: Same field, 1 line up and down
             candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber - 2, h, 0x80ff80, LINE_BONUS);
             candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber + 2, h, 0x80ff80, LINE_BONUS);
-#endif
+
             const qint32 first3D = num;
 
-            // If the next/previous field are available...
-            if (!force2D) {
-#if 1
-                // Immediately adjacent lines in previous/next field
-                if (getLinePhase(lineNumber) == getLinePhase(lineNumber - 1)) {
-                    candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber + 1, h, 0xffff80, FIELD_BONUS);
-                    candidates[num++] = getCandidate(lineNumber, h, previousFrame, lineNumber - 1, h, 0xffff80, FIELD_BONUS);
-                } else {
-                    candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber - 1, h, 0xffff80, FIELD_BONUS);
-                    candidates[num++] = getCandidate(lineNumber, h, nextFrame, lineNumber + 1, h, 0xffff80, FIELD_BONUS);
-                }
-#endif
-
-#if 1
-                // Previous/next frame, same position
-                candidates[num++] = getCandidate(lineNumber, h, previousFrame, lineNumber, h, 0x8080ff, FRAME_BONUS);
-                candidates[num++] = getCandidate(lineNumber, h, nextFrame, lineNumber, h, 0xff80ff, FRAME_BONUS);
-#endif
+            // Immediately adjacent lines in previous/next field
+            if (getLinePhase(lineNumber) == getLinePhase(lineNumber - 1)) {
+                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber + 1, h, 0xffff80, FIELD_BONUS);
+                candidates[num++] = getCandidate(lineNumber, h, previousFrame, lineNumber - 1, h, 0xffff80, FIELD_BONUS);
+            } else {
+                candidates[num++] = getCandidate(lineNumber, h, *this, lineNumber - 1, h, 0xffff80, FIELD_BONUS);
+                candidates[num++] = getCandidate(lineNumber, h, nextFrame, lineNumber + 1, h, 0xffff80, FIELD_BONUS);
             }
+
+            // Previous/next frame, same position
+            candidates[num++] = getCandidate(lineNumber, h, previousFrame, lineNumber, h, 0x8080ff, FRAME_BONUS);
+            candidates[num++] = getCandidate(lineNumber, h, nextFrame, lineNumber, h, 0xff80ff, FRAME_BONUS);
 
             // Find the candidate with the lowest penalty
             qint32 best = 0;
@@ -394,45 +369,28 @@ void Comb::FrameBuffer::split3D(const FrameBuffer &previousFrame, const FrameBuf
                 if (candidates[i].penalty < candidates[best].penalty) best = i;
             }
 
-            // If there are several candidates of the same type that are about equally good, use the mean of all of them
-            static constexpr double MERGE_LIMIT = 2.0;
-            double candidateSample = 0.0;
-            qint32 numGood = 0;
-            if (best >= first3D) {
-                // but only for 2D...
-                candidateSample = candidates[best].sample;
-                numGood = 1;
-            } else {
-                for (qint32 i = 0; i < num; i++) {
-                    if (candidates[i].penalty < (candidates[best].penalty + MERGE_LIMIT) && (candidates[i].shade == candidates[best].shade)) {
-                        candidateSample += candidates[i].sample;
-                        numGood++;
-                    }
-                }
-                candidateSample /= numGood;
-            }
-
 #if 0
-//            if (lineNumber == 158 && h >= 763 && h < 827) { // XXX
-//            if (lineNumber == 483) { // frame 14756 GGV
             if (lineNumber == 386) {
                 fprintf(stderr, "ref sample %f at y=%d x=%d\n", clpbuffer[0].pixel[lineNumber][h], lineNumber, h);
                 for (qint32 i = 0; i < num; i++) {
                     fprintf(stderr, "  candidate %d - sample %f, penalty %f\n", i, candidates[i].sample, candidates[i].penalty);
                 }
-                double chroma = ((clpbuffer[0].pixel[lineNumber][h] / 2) - candidateSample) / 2;
-                fprintf(stderr, "best=%d numGood=%d candidateSample=%f chroma=%f\n", best, numGood, candidateSample, chroma);
+                double chroma = ((clpbuffer[0].pixel[lineNumber][h] / 2) - candidates[best].sample) / 2;
+                fprintf(stderr, "best=%d candidateSample=%f chroma=%f\n", best, candidates[best].sample, chroma);
             }
 #endif
 
-            // This sample is Y + C; the candidate is (ideally) Y - C. So compute C as ((Y + C) - (Y - C)) / 2.
-            chromaBuffer.pixel[lineNumber][h] = ((clpbuffer[0].pixel[lineNumber][h] / 2) - candidateSample) / 2;
-            shades[lineNumber][h] = candidates[best].shade;
-
-            if (configuration.adaptive && best < first3D) {
-                // Use the split2D result
-                chromaBuffer.pixel[lineNumber][h] = clpbuffer[1].pixel[lineNumber][h];
+            if (best < first3D) {
+                // A 1D or 2D candidate was best.
+                // Use split2D's output, to save duplicating the line-blending heuristics here.
+                clpbuffer[2].pixel[lineNumber][h] = clpbuffer[1].pixel[lineNumber][h];
+            } else {
+                // Compute a 3D result.
+                // This sample is Y + C; the candidate is (ideally) Y - C. So compute C as ((Y + C) - (Y - C)) / 2.
+                clpbuffer[2].pixel[lineNumber][h] = ((clpbuffer[0].pixel[lineNumber][h] / 2) - candidates[best].sample) / 2;
             }
+
+            shades[lineNumber][h] = candidates[best].shade;
         }
     }
 }
@@ -460,20 +418,16 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
         return result;
     }
 
-    // Penalty is based on mean difference in IRE over surrounding three luma samples
+    // Penalty based on mean luma difference in IRE over surrounding three samples
     double yPenalty = 0.0;
-#if 1
     for (qint32 offset = -1; offset < 2; offset++) {
         const double refY = similarityBuffer[refLineNumber][refH + offset].y;
         const double candidateY = frameBuffer.similarityBuffer[lineNumber][h + offset].y;
         yPenalty += fabs(refY - candidateY);
     }
-#endif
 
-    // ... and chroma
-    // XXX Maybe do this based on hue/saturation difference rather than I/Q?
+    // Penalty based on mean I/Q difference in IRE over surrounding three samples
     double iqPenalty = 0.0;
-#if 1
     for (qint32 offset = -1; offset < 2; offset++) {
         const double refI = similarityBuffer[refLineNumber][refH + offset].i;
         const double candidateI = frameBuffer.similarityBuffer[lineNumber][h + offset].i;
@@ -485,7 +439,6 @@ Comb::FrameBuffer::Candidate Comb::FrameBuffer::getCandidate(qint32 refLineNumbe
     }
     // Weaken this relative to luma, to avoid spurious colour in the 2D result from showing through
     iqPenalty *= 0.3;
-#endif
 
     result.penalty = (yPenalty / 3 / irescale) + (iqPenalty / 6 / irescale) + adjustPenalty;
     return result;
