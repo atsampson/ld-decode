@@ -90,11 +90,11 @@ private:
 
         void split1D();
         void split2D();
-        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame);
+        void split3D(const FrameBuffer &previousFrame, const FrameBuffer &nextFrame, bool force2D);
 
-        void splitIQ();
+        void splitIQ(bool force2D);
         void filterIQ();
-        void adjustY();
+        void adjustY(bool force2D);
 
         void doCNR();
         void doYNR();
@@ -124,9 +124,6 @@ private:
             double pixel[MAX_HEIGHT][MAX_WIDTH];
         } clpbuffer[3];
 
-        // Approximate luma samples for similarity detection
-        double luma[MAX_HEIGHT][MAX_WIDTH];
-
         struct Candidate {
             double penalty;
             double sample;
@@ -134,8 +131,13 @@ private:
         };
         quint32 shades[MAX_HEIGHT][MAX_WIDTH];
 
+        typedef YIQ YIQBuffer[MAX_HEIGHT][MAX_WIDTH];
+
+        // Approximate YIQ samples for similarity detection
+        YIQBuffer similarityBuffer;
+
         // Demodulated YIQ samples
-        YIQ yiqBuffer[MAX_HEIGHT][MAX_WIDTH];
+        YIQBuffer yiqBuffer;
 
         inline qint32 getFieldID(qint32 lineNumber) const;
         inline bool getLinePhase(qint32 lineNumber) const;
