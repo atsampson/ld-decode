@@ -53,6 +53,7 @@ public:
         qint32 dimensions = 2;
         bool adaptive = true;
         bool showMap = false;
+        double magic = 0.5;
 
         double cNRLevel = 0.0;
         double yNRLevel = 1.0;

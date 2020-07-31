@@ -39,6 +39,9 @@ ChromaDecoderConfigDialog::ChromaDecoderConfigDialog(QWidget *parent) :
     ui->thresholdHorizontalSlider->setMinimum(0);
     ui->thresholdHorizontalSlider->setMaximum(100);
 
+    ui->magicHorizontalSlider->setMinimum(0);
+    ui->magicHorizontalSlider->setMaximum(100);
+
     ui->cNRHorizontalSlider->setMinimum(0);
     ui->cNRHorizontalSlider->setMaximum(100);
 
@@ -63,6 +66,7 @@ void ChromaDecoderConfigDialog::setConfiguration(bool _isSourcePal, const PalCol
 
     palConfiguration.chromaGain = qBound(0.0, palConfiguration.chromaGain, 2.0);
     palConfiguration.transformThreshold = qBound(0.0, palConfiguration.transformThreshold, 1.0);
+    ntscConfiguration.magic = qBound(0.0, ntscConfiguration.magic, 1.0);
     ntscConfiguration.cNRLevel = qBound(0.0, ntscConfiguration.cNRLevel, 10.0);
     ntscConfiguration.yNRLevel = qBound(0.0, ntscConfiguration.yNRLevel, 10.0);
 
@@ -155,6 +159,14 @@ void ChromaDecoderConfigDialog::updateDialog()
         ui->ntscFilter3DRadioButton->setChecked(true);
         break;
     }
+
+    ui->magicLabel->setEnabled(isSourceNtsc);
+
+    ui->magicHorizontalSlider->setEnabled(isSourceNtsc);
+    ui->magicHorizontalSlider->setValue(static_cast<qint32>(ntscConfiguration.magic * 100));
+
+    ui->magicValueLabel->setEnabled(isSourceNtsc);
+    ui->magicValueLabel->setText(QString::number(ntscConfiguration.magic, 'f', 2));
 
     ui->adaptiveCheckBox->setEnabled(isSourceNtsc && ntscConfiguration.dimensions == 3);
     ui->adaptiveCheckBox->setChecked(ntscConfiguration.adaptive);
@@ -251,6 +263,13 @@ void ChromaDecoderConfigDialog::on_ntscFilterButtonGroup_buttonClicked(QAbstract
         ntscConfiguration.dimensions = 3;
     }
     updateDialog();
+    emit chromaDecoderConfigChanged();
+}
+
+void ChromaDecoderConfigDialog::on_magicHorizontalSlider_valueChanged(int value)
+{
+    ntscConfiguration.magic = static_cast<double>(value) / 100;
+    ui->magicValueLabel->setText(QString::number(ntscConfiguration.magic, 'f', 2));
     emit chromaDecoderConfigChanged();
 }
 

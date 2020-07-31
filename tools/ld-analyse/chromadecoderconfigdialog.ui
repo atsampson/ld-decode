@@ -246,6 +246,30 @@
         </spacer>
        </item>
        <item>
+        <widget class="QLabel" name="magicLabel">
+         <property name="text">
+          <string>Magic:</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QSlider" name="magicHorizontalSlider">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="magicValueLabel">
+         <property name="text">
+          <string>0.00</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignCenter</set>
+         </property>
+        </widget>
+       </item>
+       <item>
         <widget class="QCheckBox" name="adaptiveCheckBox">
          <property name="text">
           <string>Enable adaptive filter</string>
